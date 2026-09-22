@@ -16,6 +16,9 @@ import { adminCouponRoutes, publicCouponRoutes } from './modules/coupons/coupon.
 import { adminProductRoutes, publicProductRoutes } from './modules/products/product.routes';
 import { adminOrderRoutes, orderCronRoutes, orderRoutes } from './modules/orders/order.routes';
 import { adminReviewRoutes, publicReviewRoutes } from './modules/reviews/review.routes';
+import { wishlistRoutes } from './modules/wishlist/wishlist.routes';
+import { adminBackupRoutes } from './modules/adminOps/backup.routes';
+import { adminHealthRoutes } from './modules/adminOps/health.routes';
 import { adminSettingsRoutes, publicSettingsRoutes } from './modules/settings/settings.routes';
 import { cronRoutes } from './modules/cron/cleanup.routes';
 import { asyncHandler } from './utils/asyncHandler';
@@ -45,6 +48,10 @@ export function createApp(opts: AppOptions = {}): Express {
       maxAge: 600,
     }),
   );
+  // A full database backup can be several MB; the global 100kb JSON limit (DoS protection for every other route) would make
+  // restoring one impossible. `express.json()` is idempotent - once a body is parsed, later instances just call next() - so
+  // this larger, PATH-SCOPED parser runs first only for that one route, and every other route keeps the strict 100kb limit.
+  app.use(`${API_PREFIX}/admin/backup/restore`, express.json({ limit: '25mb' }));
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
@@ -75,6 +82,9 @@ export function createApp(opts: AppOptions = {}): Express {
   v1.use('/admin/orders', adminOrderRoutes());
   v1.use('/reviews', publicReviewRoutes());
   v1.use('/admin/reviews', adminReviewRoutes());
+  v1.use('/wishlist', wishlistRoutes());
+  v1.use('/admin/backup', adminBackupRoutes());
+  v1.use('/admin', adminHealthRoutes());
   v1.use('/internal/cron', cronRoutes());
   v1.use('/internal/cron/orders', orderCronRoutes());
   app.use(API_PREFIX, v1);
