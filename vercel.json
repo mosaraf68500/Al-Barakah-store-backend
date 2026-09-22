@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "crons": [
+    { "path": "/v1/internal/cron/cleanup", "schedule": "0 3 * * *" },
+    { "path": "/v1/internal/cron/orders/expire-pending", "schedule": "0 4 * * *" }
+  ]
+}

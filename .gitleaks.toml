@@ -1,0 +1,7 @@
+# Extends the default ruleset. Placeholders in .env.example are not secrets.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "placeholder values in documentation/examples and the dummy secrets that only exist inside the test runner config"
+paths = ['''\.env\.example$''', '''tests/.*''', '''^vitest\.config\.ts$''']
