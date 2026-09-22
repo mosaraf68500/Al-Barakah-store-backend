@@ -1,7 +1,10 @@
 import { z } from 'zod';
+import { isAllowedCourierHost } from '../courier/hostAllowList';
 
 const str = (max = 500) => z.string().max(max);
 const httpsUrl = z.string().max(500).refine((u) => { try { return new URL(u).protocol === 'https:'; } catch { return false; } }, 'must be an https:// URL');
+/** Courier base URLs are further restricted to the approved host list (SECURITY_RISKS #18/#25) - refused at SAVE time, not just at call time. */
+const courierBaseUrl = (provider: 'steadfast' | 'pathao') => httpsUrl.refine((u) => isAllowedCourierHost(provider, u), `must be an approved ${provider} host`);
 /** Images must be hosted URLs (Cloudinary) - base64 data URLs are rejected everywhere (see refuseInlineImages). */
 const imageRef = z.string().max(1000).refine((v) => v === '' || /^https?:\/\//i.test(v), 'image must be an http(s) URL');
 
@@ -39,8 +42,8 @@ const facebookPixelConfig = z.object({
 }).partial();
 
 const courierConfig = z.object({
-  steadfast: z.object({ enabled: z.boolean(), baseUrl: httpsUrl, apiKey: str(300), secretKey: str(300) }).partial(),
-  pathao: z.object({ enabled: z.boolean(), baseUrl: httpsUrl, storeId: str(64), clientId: str(300), clientSecret: str(300), username: str(300), password: str(300) }).partial(),
+  steadfast: z.object({ enabled: z.boolean(), baseUrl: courierBaseUrl('steadfast'), apiKey: str(300), secretKey: str(300) }).partial(),
+  pathao: z.object({ enabled: z.boolean(), baseUrl: courierBaseUrl('pathao'), storeId: str(64), clientId: str(300), clientSecret: str(300), username: str(300), password: str(300) }).partial(),
   defaultCourier: z.enum(['steadfast', 'pathao', 'manual']),
   autoSendOnConfirm: z.boolean(),
 }).partial();

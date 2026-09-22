@@ -347,15 +347,16 @@ describe('admin orders - dispatch (SIMULATED) and the courier COD-amount fix (BU
     expect(explicit.body.courier.provider).toBe('pathao');
   });
 
-  it('ENABLE_LIVE_INTEGRATIONS=true refuses (501) instead of silently simulating - there is no real adapter yet (Module 11)', async () => {
+  it('ENABLE_LIVE_INTEGRATIONS=true with no courier credentials configured -> 502 COURIER_DISPATCH_FAILED, order untouched (real adapters are Module 11 - see courier.test.ts for the full live-mode suite)', async () => {
     const { a, tok } = await adminCtx();
     const { res } = await place(a, tok);
     process.env.ENABLE_LIVE_INTEGRATIONS = 'true';
     resetEnvCacheForTests();
     try {
       const r = await request(a).post(`/v1/admin/orders/${res.body.order.id}/dispatch`).set(auth(tok)).send({ provider: 'steadfast' });
-      expect(r.status).toBe(501);
-      expect(r.body.error).toBe('COURIER_LIVE_NOT_IMPLEMENTED');
+      expect(r.status).toBe(502);
+      expect(r.body.error).toBe('COURIER_DISPATCH_FAILED');
+      expect((await OrderModel.findById(res.body.order.id).lean())!.status).toBe('pending'); // untouched by the failed dispatch
     } finally {
       process.env.ENABLE_LIVE_INTEGRATIONS = 'false';
       resetEnvCacheForTests();

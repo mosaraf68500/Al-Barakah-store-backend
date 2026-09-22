@@ -6,7 +6,7 @@ import { notifyOrderPlaced } from '../src/modules/notifications/orderEvents.serv
 import { buildPurchasePayload, sendFacebookPurchaseEvent } from '../src/modules/notifications/facebookCapi';
 import { formatOrderForTelegram, sendTelegramOrderAlert } from '../src/modules/notifications/telegram';
 import { OrderModel } from '../src/modules/orders/order.model';
-import { adminCtx, app, auth, mkProduct, patchSettings } from './helpers';
+import { ADMIN_EMAIL, ADMIN_PASSWORD, adminCtx, app, auth, makeUser, mkProduct, patchSettings } from './helpers';
 
 let seq = 95_000_000;
 const nextPhone = () => `015${String(seq++).padStart(8, '0')}`;
@@ -182,10 +182,23 @@ describe('Facebook CAPI Purchase event - simulated by default, PII hashed (fixes
   });
 });
 
-describe('notifyOrderPlaced - real trigger point (order creation) and non-blocking failure handling', () => {
-  it('placing an order sends the owner e-mail, and the customer e-mail ONLY when one was given', async () => {
+describe('order e-mails (owner + customer) are gated by ENABLE_LIVE_INTEGRATIONS, same as Telegram/CAPI (Module 7 follow-up)', () => {
+  it('default (false): SIMULATED - neither e-mail is actually sent, placing an order leaves the outbox untouched', async () => {
+    const { a, tok } = await adminCtx();
+    const order = await placedOrder(a, tok, { customer: { fullName: 'A', phone: nextPhone(), email: 'buyer@example.com', address: 'a', city: 'Inside Dhaka' } });
+    expect(await notifyOrderPlaced(order)).toMatchObject({ ownerEmail: 'simulated', customerEmail: 'simulated' });
+
+    const before = memoryOutbox.length;
+    const res = await request(a).post('/v1/orders').send({ items: [{ productId: (await mkProduct(a, tok)).id, quantity: 1 }], customer: { fullName: 'B', phone: nextPhone(), email: 'buyer2@example.com', address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
+    expect(res.status).toBe(201);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(memoryOutbox.length).toBe(before); // nothing added - simulated, not sent
+  });
+
+  it('ENABLE_LIVE_INTEGRATIONS=true: both are actually sent via the mailer; the customer one only when an e-mail was given', async () => {
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
+    useEnv({ ENABLE_LIVE_INTEGRATIONS: 'true' });
     const p = await mkProduct(a, tok, { price: 200, stockCount: 5 });
     const before = memoryOutbox.length;
     const withEmail = await request(a).post('/v1/orders').send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'A', phone: nextPhone(), email: 'buyer@example.com', address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
@@ -201,10 +214,28 @@ describe('notifyOrderPlaced - real trigger point (order creation) and non-blocki
     expect(memoryOutbox.length).toBe(before2 + 1); // owner only
   });
 
-  it('notifyOrderPlaced aggregates every channel and NEVER throws, even when every channel is broken/unconfigured', async () => {
+  it('admin OTP e-mail is NOT gated by ENABLE_LIVE_INTEGRATIONS - it stays always-on regardless of the flag (core auth, not an order notification)', async () => {
+    useEnv({ ENABLE_LIVE_INTEGRATIONS: 'false' });
+    const a = app();
+    await makeUser('admin');
+    const before = memoryOutbox.length;
+    await request(a).post('/v1/admin-auth/login').send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }).expect(200);
+    expect(memoryOutbox.length).toBe(before + 1); // sent for real even with live integrations off
+  });
+});
+
+describe('notifyOrderPlaced - aggregation and non-blocking failure handling', () => {
+  it('aggregates every channel and NEVER throws, even when every channel is broken/unconfigured (default, simulated e-mail)', async () => {
     const { a, tok } = await adminCtx();
     const order = await placedOrder(a, tok, { customer: { fullName: 'C', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' } }); // no customer email
-    useEnv({ ORDER_NOTIFY_EMAILS: undefined }); // breaks the owner e-mail (throws inside sendOrderNotificationEmail)
+    const result = await notifyOrderPlaced(order);
+    expect(result).toEqual({ ownerEmail: 'simulated', customerEmail: 'skipped', telegram: { sent: false, simulated: false, reason: 'NOT_CONFIGURED' }, facebookCapi: { sent: false, simulated: false, reason: 'NOT_CONFIGURED' } });
+  });
+
+  it('in LIVE mode, a genuinely broken owner e-mail is reported as "failed", not thrown', async () => {
+    const { a, tok } = await adminCtx();
+    const order = await placedOrder(a, tok, { customer: { fullName: 'C', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' } });
+    useEnv({ ENABLE_LIVE_INTEGRATIONS: 'true', ORDER_NOTIFY_EMAILS: undefined }); // breaks the owner e-mail (throws inside sendOrderNotificationEmail)
     const result = await notifyOrderPlaced(order);
     expect(result).toEqual({ ownerEmail: 'failed', customerEmail: 'skipped', telegram: { sent: false, simulated: false, reason: 'NOT_CONFIGURED' }, facebookCapi: { sent: false, simulated: false, reason: 'NOT_CONFIGURED' } });
   });
@@ -213,7 +244,7 @@ describe('notifyOrderPlaced - real trigger point (order creation) and non-blocki
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok, { price: 100, stockCount: 5 });
-    useEnv({ ORDER_NOTIFY_EMAILS: undefined });
+    useEnv({ ENABLE_LIVE_INTEGRATIONS: 'true', ORDER_NOTIFY_EMAILS: undefined });
     const res = await request(a).post('/v1/orders').send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'D', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
     expect(res.status).toBe(201);
     await new Promise((r) => setTimeout(r, 20));

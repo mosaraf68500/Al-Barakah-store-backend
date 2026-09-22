@@ -13,7 +13,8 @@ import { redeemCoupon } from '../coupons/coupon.service';
 import { notifyOrderPlaced } from '../notifications/orderEvents.service';
 import { serializeImage } from '../media/media.lookup';
 import { ProductModel } from '../products/product.model';
-import { getAdminSettings, getPublicSettings } from '../settings/settings.service';
+import { getConfig, getPublicSettings } from '../settings/settings.service';
+import { dispatchViaLiveCourier, getCourierConfig, type CourierProvider } from '../courier/courier.service';
 import type { UserDocument } from '../users/user.model';
 import { ORDER_STATUSES, OrderModel, type OrderDoc, type OrderStatus } from './order.model';
 import { toFullOrder, toTrackedOrder } from './order.serializer';
@@ -230,7 +231,7 @@ export async function getAdminOrder(id: string) {
 }
 
 export interface OrderPatch { status?: OrderStatus; deliveryPaymentStatus?: Exclude<OrderDoc['deliveryPaymentStatus'], 'FAKE_SUSPECTED' | 'ADVANCE_PAID'>; toggleFakeSuspicion?: boolean }
-export interface OrderMutationResult { order: ReturnType<typeof toFullOrder>; stock: 'deducted' | 'restored' | 'none' }
+export interface OrderMutationResult { order: ReturnType<typeof toFullOrder>; stock: 'deducted' | 'restored' | 'none'; courier?: Record<string, unknown> }
 
 /**
  * `PATCH /admin/orders/:id` - status changes are wired to Module 5a's stock reserve/release (only entering/leaving `cancelled`
@@ -242,6 +243,12 @@ export interface OrderMutationResult { order: ReturnType<typeof toFullOrder>; st
  * `ADVANCE_PAID` and `FAKE_SUSPECTED` (each reachable only through its own guarded action - verify-payment, this toggle - so a
  * claim of "paid" or "fake" always goes through the check that action performs). One combined transaction; a failed stock move
  * (e.g. re-opening a cancelled order whose stock sold out meanwhile) rolls back the whole patch, including the status change.
+ *
+ * Auto-dispatch on confirm (BACKEND_PLAN B2, Module 11): if the status just moved to `processing`/`shipped`,
+ * `courierConfig.autoSendOnConfirm` is on, and the order has no consignment yet, this ALSO calls `dispatchOrder` with the
+ * default courier - matching legacy's `handleStatusChange` -> `handleSendOrderToCourier`. It runs AFTER the status-change
+ * transaction has committed and is best-effort: a failed auto-dispatch is logged and does NOT fail or roll back the status
+ * change that triggered it (an admin can always dispatch manually afterwards).
  */
 export async function patchOrder(actor: UserDocument, id: string, patch: OrderPatch, req: Request): Promise<OrderMutationResult> {
   let stockEffect: OrderMutationResult['stock'] = 'none';
@@ -279,7 +286,22 @@ export async function patchOrder(actor: UserDocument, id: string, patch: OrderPa
     }
   });
   await recordAudit({ actor: actorOf(actor), action: 'order.update', entity: 'Order', entityId: id, details: { changed, ...patch }, req });
-  return { order: await getAdminOrder(id), stock: stockEffect };
+
+  let courier: Record<string, unknown> | undefined;
+  if (patch.status === 'processing' || patch.status === 'shipped') {
+    try {
+      const fresh = await OrderModel.findById(id).select('courier').lean();
+      const courierCfg = await getCourierConfig();
+      if (courierCfg.autoSendOnConfirm && !fresh?.courier?.consignmentId && (courierCfg.defaultCourier === 'steadfast' || courierCfg.defaultCourier === 'pathao')) {
+        const dispatched = await dispatchOrder(actor, id, courierCfg.defaultCourier, req);
+        courier = dispatched.courier;
+        if (dispatched.stock !== 'none') stockEffect = dispatched.stock;
+      }
+    } catch (err) {
+      logger.warn({ err, orderId: id }, 'auto-dispatch-on-confirm failed (ignored - an admin can dispatch manually)');
+    }
+  }
+  return { order: await getAdminOrder(id), stock: stockEffect, ...(courier ? { courier } : {}) };
 }
 
 /**
@@ -312,26 +334,58 @@ export async function softDeleteOrder(actor: UserDocument, id: string, req: Requ
 }
 
 /**
- * `POST /admin/orders/:id/dispatch` - SIMULATED consignment creation (the real Steadfast/Pathao HTTP calls are Module 11).
- * `ENABLE_LIVE_INTEGRATIONS=true` without a real adapter yet is refused loudly (501) rather than silently pretending.
- * `codAmount` is the courier COD-collection fix (BUG_FIXES B1): the courier must collect `dueAmountOnDelivery`
- * (= total - whatever was actually paid in advance), never the raw `total`, or a customer who prepaid the delivery fee (or the
- * whole order via bKash) would be double-charged on delivery.
+ * `POST /admin/orders/:id/dispatch` (Module 11). Below `ENABLE_LIVE_INTEGRATIONS` this still just simulates a consignment (same
+ * shape as Module 5c). At or above it, calls the real Steadfast/Pathao adapter with credentials loaded from `settings`
+ * (encrypted, admin-managed - nothing hard-coded here). `codAmount` is the courier COD-collection fix (BUG_FIXES B1): the
+ * courier must collect `dueAmountOnDelivery` (= total - whatever was actually paid in advance), never the raw `total`, or a
+ * customer who prepaid the delivery fee (or the whole order via bKash) would be double-charged on delivery.
+ *
+ * Failure handling (a deliberate decision - legacy's own dispatch route left the order untouched on failure too, just showed an
+ * alert): a failed live dispatch touches NOTHING on the order - no status change, no stock movement, no `courier` field written
+ * - and throws 502 `COURIER_DISPATCH_FAILED` so the admin sees the error and can retry manually (dispatch is not automatically
+ * retried). On SUCCESS, and only then, the order's `courier` field is written and - matching legacy's
+ * `handleSendOrderToCourier`, which always moved a successfully-dispatched order to "Shipped" - the status advances to
+ * `shipped` (skipped if the order is already `delivered` or `cancelled`, a case legacy's own code never guarded against).
  */
-export async function dispatchOrder(actor: UserDocument, id: string, requestedProvider: 'steadfast' | 'pathao' | undefined, req: Request) {
-  if (getEnv().ENABLE_LIVE_INTEGRATIONS) throw new ApiError(501, 'COURIER_LIVE_NOT_IMPLEMENTED', 'Live courier dispatch is not implemented yet (Module 11)');
+export async function dispatchOrder(actor: UserDocument, id: string, requestedProvider: 'steadfast' | 'pathao' | undefined, req: Request): Promise<OrderMutationResult & { courier: Record<string, unknown> }> {
   const o = await getDoc(id);
-  const settings = await getAdminSettings();
-  const provider = requestedProvider ?? (settings.courierConfig as { defaultCourier?: string })?.defaultCourier ?? 'manual';
+  const courierCfg = await getCourierConfig();
+  const provider: CourierProvider | 'manual' = requestedProvider ?? (courierCfg.defaultCourier as CourierProvider | 'manual' | undefined) ?? 'manual';
   if (provider !== 'steadfast' && provider !== 'pathao') throw ApiError.conflict('COURIER_NOT_CONFIGURED', 'No courier is configured for automatic dispatch');
   const codAmount = o.dueAmountOnDelivery; // == total - advanceAmount by construction (Module 5a's pricing invariant)
 
-  const consignmentId = `SIM-${o._id}`;
-  const trackingCode = `SIM-TRK-${o._id}`;
-  const courier = { success: true, provider, consignmentId, trackingCode, status: 'in_review', message: `[SIMULATED] ${provider} consignment created (COD ৳${codAmount})`, simulated: true, codAmount };
-  await OrderModel.updateOne({ _id: id }, { $set: { courier: { provider, consignmentId, trackingCode, status: 'in_review', sentAt: new Date(), response: courier } } });
-  await recordAudit({ actor: actorOf(actor), action: 'order.dispatch', entity: 'Order', entityId: id, details: { provider, codAmount, simulated: true }, req });
-  return { order: await getAdminOrder(id), courier };
+  let live: import('../courier/courier.service').CourierDispatchResult | null = null;
+  if (getEnv().ENABLE_LIVE_INTEGRATIONS) {
+    live = await dispatchViaLiveCourier(o, provider, codAmount);
+    if (!live.success) {
+      await recordAudit({ actor: actorOf(actor), action: 'order.dispatch_failed', entity: 'Order', entityId: id, details: { provider, error: live.error }, req });
+      throw new ApiError(502, 'COURIER_DISPATCH_FAILED', live.error || 'Courier dispatch failed', { provider });
+    }
+  }
+  const consignmentId = live?.consignmentId ?? `SIM-${o._id}`;
+  const trackingCode = live?.trackingCode ?? `SIM-TRK-${o._id}`;
+  const status = live?.status ?? 'in_review';
+  const simulated = !live;
+  const courier = { success: true, provider, consignmentId, trackingCode, status, message: `${simulated ? '[SIMULATED] ' : ''}${provider} consignment created (COD ৳${codAmount})`, simulated, codAmount };
+
+  let stockEffect: OrderMutationResult['stock'] = 'none';
+  await withTransaction(async (session) => {
+    const current = await OrderModel.findById(id).session(session);
+    if (!current) throw ApiError.notFound('ORDER_NOT_FOUND');
+    current.courier = { provider, consignmentId, trackingCode, status, sentAt: new Date(), response: courier };
+    if (current.status === 'pending' || current.status === 'processing') {
+      const prevStatus = current.status;
+      current.status = 'shipped';
+      const action = stockActionForTransition(prevStatus, 'shipped'); // always 'none' - neither side is 'cancelled'
+      if (action !== 'none') {
+        await setOrderStock(id, action, session);
+        stockEffect = action === 'reserve' ? 'deducted' : 'restored';
+      }
+    }
+    await current.save({ session });
+  });
+  await recordAudit({ actor: actorOf(actor), action: 'order.dispatch', entity: 'Order', entityId: id, details: { provider, codAmount, simulated }, req });
+  return { order: await getAdminOrder(id), stock: stockEffect, courier };
 }
 
 export { ORDER_STATUSES };
