@@ -4,7 +4,7 @@ import { LIMITS, makeLimiter } from '../../middleware/rateLimiter';
 import { validateBody } from '../../middleware/validate';
 import { asyncHandler } from '../../utils/asyncHandler';
 import * as c from './auth.controller';
-import { changePinSchema, loginSchema, registerSchema } from './auth.validation';
+import { addressInput, addressPatch, changePinSchema, loginSchema, registerSchema, updateProfileSchema } from './auth.validation';
 
 export function authRoutes(rateLimits: boolean) {
   const r = Router();
@@ -14,5 +14,10 @@ export function authRoutes(rateLimits: boolean) {
   r.post('/logout', asyncHandler(c.logout));
   r.post('/change-pin', makeLimiter(LIMITS.customerLogin, rateLimits), authenticate('customer'), validateBody(changePinSchema), asyncHandler(c.changePin));
   r.get('/me', authenticate('customer'), asyncHandler(c.me));
+  r.patch('/me', authenticate('customer'), validateBody(updateProfileSchema), asyncHandler(c.updateMe));
+  r.get('/addresses', authenticate('customer'), asyncHandler(c.getAddresses));
+  r.post('/addresses', authenticate('customer'), validateBody(addressInput), asyncHandler(c.postAddress));
+  r.put('/addresses/:id', authenticate('customer'), validateBody(addressPatch), asyncHandler(c.putAddress));
+  r.delete('/addresses/:id', authenticate('customer'), asyncHandler(c.deleteAddress));
   return r;
 }

@@ -95,3 +95,31 @@ export function renderOrderNotificationEmail(o: OrderEmailInput) {
     html,
   };
 }
+
+/**
+ * Order confirmation for the CUSTOMER (Module 10). Legacy had no equivalent - the only order e-mail it ever sent was the owner
+ * notification above; this is a new, small addition, only sent when the order actually has an e-mail address (most guest
+ * checkouts don't). Same escaping discipline as every other template here.
+ */
+export function renderCustomerOrderConfirmationEmail(o: OrderEmailInput) {
+  const code = o.trackingCode || o.id;
+  const items = o.items
+    .map((i) => `<tr style="border-bottom:1px solid #14532d;"><td style="padding:10px 8px;color:#ffffff;font-size:13px;">${escapeHtml(i.name)}</td><td style="padding:10px 8px;text-align:center;color:#D4AF37;font-size:13px;">${escapeHtml(i.quantity)}x</td><td style="padding:10px 8px;text-align:right;color:#4ade80;font-size:13px;">${money(i.price * i.quantity)}</td></tr>`)
+    .join('');
+  const html = wrap(`
+  <div style="background-color:#053324;padding:20px;border-radius:14px;border:1px solid #14532d;">
+    <p style="color:#4ade80;margin:0 0 8px 0;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:bold;">✅ অর্ডার কনফার্মেশন</p>
+    <p style="color:#cbd5e1;font-size:13px;line-height:1.6;margin:0 0 12px 0;">প্রিয় ${escapeHtml(o.customerName)}, আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে। ধন্যবাদ Al Barakah Premium-এ অর্ডার করার জন্য।</p>
+    <h3 style="color:#D4AF37;margin:2px 0 12px 0;font-size:15px;font-family:monospace;">#${escapeHtml(code)}</h3>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:14px;"><tbody>${items}</tbody></table>
+    <table style="width:100%;font-size:13px;color:#cbd5e1;">
+      <tr><td style="padding:4px 0;">সর্বমোট বিল:</td><td style="text-align:right;color:#D4AF37;font-weight:900;font-size:16px;">${money(o.totalAmount)}</td></tr>
+      <tr><td style="padding:4px 0;">ডেলিভারি ঠিকানা:</td><td style="text-align:right;color:#ffffff;">${escapeHtml(o.deliveryAddress)}${o.cityDistrict ? ` (${escapeHtml(o.cityDistrict)})` : ''}</td></tr>
+    </table>
+  </div>`);
+  return {
+    subject: `[Al Barakah] আপনার অর্ডার #${code} নিশ্চিত হয়েছে`,
+    text: `Your order #${code} for ${money(o.totalAmount)} has been received. Thank you for shopping with Al Barakah Premium.`,
+    html,
+  };
+}

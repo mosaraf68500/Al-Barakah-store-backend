@@ -80,6 +80,11 @@ export function toAdmin(config: Obj, secrets: Record<string, string>, version = 
 export async function getPublicSettings() {
   return toPublic((await load(false)).config);
 }
+/** Server-internal use only (never sent over HTTP) - the raw non-secret config, unmasked, for consumers like `notifications`
+ * that need fields `toPublic`/`toAdmin` don't carry (e.g. `notificationConfig.telegram.enabled`, `courierConfig`). */
+export async function getConfig(): Promise<Obj> {
+  return (await load(false)).config;
+}
 export async function getAdminSettings() {
   const { config, secrets, version } = await load(true);
   return toAdmin(config, secrets, version);

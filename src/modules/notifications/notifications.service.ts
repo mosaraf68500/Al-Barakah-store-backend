@@ -1,6 +1,6 @@
 import { getEnv } from '../../config/env';
 import { sendMail } from './mailer';
-import { renderAdminInviteEmail, renderOrderNotificationEmail, renderOtpEmail, type OrderEmailInput } from './templates';
+import { renderAdminInviteEmail, renderCustomerOrderConfirmationEmail, renderOrderNotificationEmail, renderOtpEmail, type OrderEmailInput } from './templates';
 import { OTP } from '../../config/constants';
 
 /** Throws `MailDeliveryError` when the e-mail could not be sent - callers decide how to surface it. */
@@ -14,3 +14,6 @@ export async function sendOrderNotificationEmail(order: OrderEmailInput) {
   if (to.length === 0) throw new Error('ORDER_NOTIFY_EMAILS is not configured');
   return sendMail({ to, ...renderOrderNotificationEmail(order) });
 }
+
+/** New in Module 10 - only called when the order actually has an e-mail address. */
+export const sendCustomerOrderConfirmationEmail = (to: string, order: OrderEmailInput) => sendMail({ to, ...renderCustomerOrderConfirmationEmail(order) });

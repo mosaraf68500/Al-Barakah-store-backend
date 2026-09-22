@@ -11,7 +11,7 @@ import { UserModel, type UserDocument } from '../users/user.model';
 import { sha256 } from '../../utils/crypto';
 import { toCustomerProfile } from '../users/user.serializer';
 import { issueSession, signAccessToken } from '../users/token.service';
-import type { LoginInput, RegisterInput } from './auth.validation';
+import type { AddressInput, AddressPatch, LoginInput, RegisterInput, UpdateProfileInput } from './auth.validation';
 
 const PIN_RE = /^\d{6}$/;
 
@@ -120,4 +120,70 @@ export async function changeCustomerPin(user: UserDocument, input: { currentPin:
   await recordAudit({ actor: { id: withHash._id, email: withHash.email, role: 'customer' }, action: 'customer.pin_changed', entity: 'User', entityId: String(withHash._id), details: { keptCurrentSession: Boolean(keepFamily) }, req });
   const { token, expiresIn } = signAccessToken(withHash, 'customer');
   return { accessToken: token, expiresIn };
+}
+
+/* ------------------------------------------------------------------ profile + address book (closes the Module 4 gap) */
+
+/** `PATCH /auth/me`. `phone` is not accepted here (it's the login identity); only `name`/`email`/`avatarUrl` change. */
+export async function updateCustomerProfile(user: UserDocument, input: UpdateProfileInput, req: Request) {
+  if (input.email !== undefined && input.email !== user.email) {
+    if (await UserModel.exists({ email: input.email, _id: { $ne: user._id } })) throw ApiError.conflict('EMAIL_IN_USE');
+    user.email = input.email;
+  }
+  if (input.name !== undefined) user.name = input.name;
+  if (input.avatarUrl !== undefined) user.avatarUrl = input.avatarUrl;
+  await user.save();
+  await recordAudit({ actor: { id: user._id, email: user.email, role: 'customer' }, action: 'customer.profile_update', entity: 'User', entityId: String(user._id), req });
+  return toCustomerProfile(user);
+}
+
+/** Legacy kept this in `localStorage.albarakah_user_addresses` (SECURITY_RISKS #14) - this is new server-side persistence for
+ * an existing client-side convenience, not a behaviour regression. `isDefault:true` always demotes every other address; removing
+ * the current default promotes the next one (if any) so the list never silently ends up with zero defaults. */
+function reindexDefault(addresses: UserDocument['addresses'], keepId?: string) {
+  for (const a of addresses) a.isDefault = a.id === keepId;
+}
+
+export async function listAddresses(user: UserDocument) {
+  return user.addresses;
+}
+
+export async function addAddress(user: UserDocument, input: AddressInput, req: Request) {
+  const phone = normalizeBdMobile(input.phone);
+  if (!phone) throw ApiError.badRequest('INVALID_BD_PHONE');
+  const address = { id: randomUUID(), label: input.label, name: input.name, phone, address: input.address, district: input.district, isDefault: input.isDefault };
+  user.addresses.push(address);
+  if (address.isDefault || user.addresses.length === 1) reindexDefault(user.addresses, address.id);
+  await user.save();
+  await recordAudit({ actor: { id: user._id, email: user.email, role: 'customer' }, action: 'customer.address_add', entity: 'User', entityId: String(user._id), details: { addressId: address.id }, req });
+  return user.addresses;
+}
+
+export async function updateAddress(user: UserDocument, id: string, patch: AddressPatch, req: Request) {
+  const a = user.addresses.find((x) => x.id === id);
+  if (!a) throw ApiError.notFound('ADDRESS_NOT_FOUND');
+  if (patch.phone !== undefined) {
+    const phone = normalizeBdMobile(patch.phone);
+    if (!phone) throw ApiError.badRequest('INVALID_BD_PHONE');
+    a.phone = phone;
+  }
+  if (patch.label !== undefined) a.label = patch.label;
+  if (patch.name !== undefined) a.name = patch.name;
+  if (patch.address !== undefined) a.address = patch.address;
+  if (patch.district !== undefined) a.district = patch.district;
+  if (patch.isDefault) reindexDefault(user.addresses, a.id);
+  await user.save();
+  await recordAudit({ actor: { id: user._id, email: user.email, role: 'customer' }, action: 'customer.address_update', entity: 'User', entityId: String(user._id), details: { addressId: id }, req });
+  return user.addresses;
+}
+
+export async function removeAddress(user: UserDocument, id: string, req: Request) {
+  const existed = user.addresses.some((x) => x.id === id);
+  if (!existed) throw ApiError.notFound('ADDRESS_NOT_FOUND');
+  const wasDefault = user.addresses.find((x) => x.id === id)?.isDefault;
+  user.addresses = user.addresses.filter((x) => x.id !== id) as UserDocument['addresses'];
+  if (wasDefault && user.addresses.length > 0 && !user.addresses.some((x) => x.isDefault)) reindexDefault(user.addresses, user.addresses[0].id);
+  await user.save();
+  await recordAudit({ actor: { id: user._id, email: user.email, role: 'customer' }, action: 'customer.address_remove', entity: 'User', entityId: String(user._id), details: { addressId: id }, req });
+  return user.addresses;
 }

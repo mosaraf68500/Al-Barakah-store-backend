@@ -10,6 +10,7 @@ import { normalizeBdMobile, phoneKey as last10 } from '../../utils/phone';
 import { recordAudit } from '../audit/audit.service';
 import { consumeLimit } from '../security';
 import { redeemCoupon } from '../coupons/coupon.service';
+import { notifyOrderPlaced } from '../notifications/orderEvents.service';
 import { serializeImage } from '../media/media.lookup';
 import { ProductModel } from '../products/product.model';
 import { getAdminSettings, getPublicSettings } from '../settings/settings.service';
@@ -170,6 +171,8 @@ export async function createOrder(input: CreateOrderInput, authUser: UserDocumen
         return created;
       });
       await recordAudit({ actor: authUser ? actorOf(authUser) : { email: 'guest', role: 'guest' }, action: 'order.create', entity: 'Order', entityId: id, details: { total: doc.total, paymentChoice: input.paymentChoice, couponCode: doc.couponCode, zoneUncertain: doc.zoneUncertain }, req });
+      // Fire-and-forget (Module 10): the order already succeeded, so a notification failure must never surface here - NOT awaited.
+      notifyOrderPlaced(doc).catch((err) => logger.warn({ err, orderId: id }, 'notifyOrderPlaced rejected unexpectedly (ignored)'));
       return toFullOrder(doc);
     } catch (e) {
       lastErr = e;
