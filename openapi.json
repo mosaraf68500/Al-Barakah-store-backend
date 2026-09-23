@@ -1,0 +1,2151 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Al Barakah Premium API",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "/v1"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "cronBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Process health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/products": {
+      "get": {
+        "summary": "Public catalogue",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/products/{key}": {
+      "get": {
+        "summary": "Public product",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "summary": "Public categories",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/settings/public": {
+      "get": {
+        "summary": "Public settings whitelist",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/reviews": {
+      "get": {
+        "summary": "Public reviews",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a review",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "productId": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "type": "number"
+                  },
+                  "comment": {
+                    "type": "string"
+                  },
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "productId",
+                  "rating",
+                  "comment"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/coupons/validate": {
+      "post": {
+        "summary": "Validate a coupon",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "subtotal": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "code",
+                  "subtotal"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "summary": "Place an order",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "productId": {
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "type": "number"
+                        },
+                        "selectedSize": {
+                          "type": "string"
+                        },
+                        "selectedColor": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "productId",
+                        "quantity"
+                      ]
+                    }
+                  },
+                  "customer": {
+                    "type": "object",
+                    "properties": {
+                      "fullName": {
+                        "type": "string"
+                      },
+                      "phone": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "const": ""
+                          }
+                        ]
+                      },
+                      "address": {
+                        "type": "string"
+                      },
+                      "city": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fullName",
+                      "phone",
+                      "address"
+                    ]
+                  },
+                  "paymentChoice": {
+                    "type": "string",
+                    "enum": [
+                      "FULL_COD",
+                      "ADVANCE_DELIVERY",
+                      "FULL_BKASH"
+                    ]
+                  },
+                  "bkashTrxId": {
+                    "type": "string"
+                  },
+                  "senderBkashNumber": {
+                    "type": "string"
+                  },
+                  "couponCode": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "items",
+                  "customer",
+                  "paymentChoice"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/orders/track/{code}": {
+      "get": {
+        "summary": "Masked order tracking",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/orders/my": {
+      "get": {
+        "summary": "My orders",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/wishlist": {
+      "get": {
+        "summary": "List wishlist",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/wishlist/{productId}": {
+      "post": {
+        "summary": "Toggle wishlist",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove wishlist item",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "summary": "Customer register",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "pin": {
+                    "type": "string"
+                  },
+                  "address": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Customer login",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string"
+                  },
+                  "pin": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/auth/change-pin": {
+      "post": {
+        "summary": "Change PIN",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPin": {
+                    "type": "string"
+                  },
+                  "newPin": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Customer profile",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update profile",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "avatarUrl": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/auth/addresses": {
+      "get": {
+        "summary": "Address book",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add address",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "address": {
+                    "type": "string"
+                  },
+                  "district": {
+                    "type": "string"
+                  },
+                  "isDefault": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "phone",
+                  "address"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin-auth/login": {
+      "post": {
+        "summary": "Admin password step",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin-auth/verify-otp": {
+      "post": {
+        "summary": "Admin OTP step",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin-auth/set-password": {
+      "post": {
+        "summary": "Accept an invite",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin-auth/grant-access": {
+      "post": {
+        "summary": "Grant admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "email"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/products": {
+      "get": {
+        "summary": "Admin products",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create product",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "subcategory": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "const": ""
+                      }
+                    ]
+                  },
+                  "brand": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "weight": {
+                    "type": "string"
+                  },
+                  "sku": {
+                    "type": "string"
+                  },
+                  "isHot": {
+                    "type": "boolean"
+                  },
+                  "isNew": {
+                    "type": "boolean"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "price": {
+                    "type": "number"
+                  },
+                  "originalPrice": {
+                    "type": "number"
+                  },
+                  "costPrice": {
+                    "type": "number"
+                  },
+                  "stockCount": {
+                    "type": "number"
+                  },
+                  "badge": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "BESTSELLER",
+                          "HOT",
+                          "SALE",
+                          "NEW"
+                        ]
+                      },
+                      {
+                        "const": ""
+                      }
+                    ]
+                  },
+                  "image": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "const": ""
+                      }
+                    ]
+                  },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "colors": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "hex": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "hex"
+                      ]
+                    }
+                  },
+                  "sizes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "features": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "rating": {
+                    "type": "number"
+                  },
+                  "reviewCount": {
+                    "type": "number"
+                  },
+                  "landingPage": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "headline": {
+                        "type": "string"
+                      },
+                      "subheadline": {
+                        "type": "string"
+                      },
+                      "highlightBadge": {
+                        "type": "string"
+                      },
+                      "videoUrl": {
+                        "type": "string"
+                      },
+                      "bannerNote": {
+                        "type": "string"
+                      },
+                      "keyBenefits": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "variants": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "size": {
+                              "type": "string"
+                            },
+                            "price": {
+                              "type": "number"
+                            },
+                            "originalPrice": {
+                              "type": "number"
+                            },
+                            "isPopular": {
+                              "type": "boolean"
+                            },
+                            "freeDelivery": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "label",
+                            "size",
+                            "price"
+                          ]
+                        }
+                      },
+                      "guaranteeTitle": {
+                        "type": "string"
+                      },
+                      "guaranteeText": {
+                        "type": "string"
+                      },
+                      "trustPoints": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "faqs": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "question": {
+                              "type": "string"
+                            },
+                            "answer": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "question",
+                            "answer"
+                          ]
+                        }
+                      },
+                      "customerHelpline": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "category",
+                  "subcategory",
+                  "price",
+                  "badge",
+                  "image"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/categories": {
+      "get": {
+        "summary": "Admin categories",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create category",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "badge": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "const": ""
+                      }
+                    ]
+                  },
+                  "order": {
+                    "type": "number"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "badge"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/coupons": {
+      "get": {
+        "summary": "Admin coupons",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create coupon",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "code": {},
+                  "discountPercent": {
+                    "type": "number"
+                  },
+                  "minSpend": {
+                    "type": "number"
+                  },
+                  "maxDiscountAmount": {
+                    "type": "number"
+                  },
+                  "usageLimit": {
+                    "type": "number"
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {}
+                    ]
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "discountPercent"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/orders": {
+      "get": {
+        "summary": "Admin orders",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/reviews": {
+      "get": {
+        "summary": "Admin reviews",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/settings": {
+      "get": {
+        "summary": "Admin settings (secrets masked)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update settings",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "storeName": {
+                    "type": "string"
+                  },
+                  "supportPhone": {
+                    "type": "string"
+                  },
+                  "enableCustomerReviews": {
+                    "type": "boolean"
+                  },
+                  "enableCoupons": {
+                    "type": "boolean"
+                  },
+                  "heroBanners": {
+                    "type": "object",
+                    "properties": {
+                      "slides": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "badge": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "subtitle": {
+                              "type": "string"
+                            },
+                            "ctaText": {
+                              "type": "string"
+                            },
+                            "image": {
+                              "type": "string"
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "order": {
+                              "type": "number"
+                            },
+                            "targetType": {
+                              "type": "string",
+                              "enum": [
+                                "category",
+                                "product",
+                                "all"
+                              ]
+                            },
+                            "targetValue": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "title",
+                            "image",
+                            "enabled",
+                            "targetType",
+                            "targetValue"
+                          ]
+                        }
+                      },
+                      "promoCard": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "badge": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "ctaText": {
+                            "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "targetType": {
+                            "type": "string",
+                            "enum": [
+                              "category",
+                              "product",
+                              "all"
+                            ]
+                          },
+                          "targetValue": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "image",
+                          "enabled",
+                          "targetType",
+                          "targetValue"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "slides",
+                      "promoCard"
+                    ]
+                  },
+                  "topSelling": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "productIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "productId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "price": {
+                              "type": "number"
+                            },
+                            "originalPrice": {
+                              "type": "number"
+                            },
+                            "image": {
+                              "type": "string"
+                            },
+                            "badge": {
+                              "type": "string"
+                            },
+                            "badgeText": {
+                              "type": "string"
+                            },
+                            "badgeBgColor": {
+                              "type": "string"
+                            },
+                            "badgeTextColor": {
+                              "type": "string"
+                            },
+                            "overridePrice": {
+                              "type": "number"
+                            },
+                            "overrideOriginalPrice": {
+                              "type": "number"
+                            },
+                            "overrideWeight": {
+                              "type": "string"
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "order": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "price",
+                            "image"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "title",
+                      "items"
+                    ]
+                  },
+                  "deliveryConfig": {
+                    "type": "object",
+                    "properties": {
+                      "insideDhakaCharge": {
+                        "type": "number"
+                      },
+                      "outsideDhakaCharge": {
+                        "type": "number"
+                      },
+                      "subDhakaCharge": {
+                        "type": "number"
+                      },
+                      "enableSubDhaka": {
+                        "type": "boolean"
+                      },
+                      "freeDeliveryThreshold": {
+                        "type": "number"
+                      },
+                      "enableFreeDelivery": {
+                        "type": "boolean"
+                      },
+                      "estimatedInsideDhakaDays": {
+                        "type": "string"
+                      },
+                      "estimatedOutsideDhakaDays": {
+                        "type": "string"
+                      },
+                      "deliveryNotice": {
+                        "type": "string"
+                      },
+                      "requireAdvanceDeliveryCharge": {
+                        "type": "boolean"
+                      },
+                      "advanceDeliveryNotice": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "bkashConfig": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "MANUAL",
+                          "GATEWAY"
+                        ]
+                      },
+                      "personalNumber": {
+                        "type": "string"
+                      },
+                      "accountType": {
+                        "type": "string",
+                        "enum": [
+                          "Personal",
+                          "Agent",
+                          "Merchant"
+                        ]
+                      },
+                      "manualInstructions": {
+                        "type": "string"
+                      },
+                      "requireTrxId": {
+                        "type": "boolean"
+                      },
+                      "gateway": {
+                        "type": "object",
+                        "properties": {
+                          "isSandbox": {
+                            "type": "boolean"
+                          },
+                          "autoCapture": {
+                            "type": "boolean"
+                          },
+                          "callbackUrl": {
+                            "type": "string"
+                          },
+                          "appKey": {
+                            "type": "string"
+                          },
+                          "appSecret": {
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "password": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "seoConfig": {
+                    "type": "object",
+                    "properties": {
+                      "metaTitle": {
+                        "type": "string"
+                      },
+                      "metaDescription": {
+                        "type": "string"
+                      },
+                      "ogImage": {
+                        "type": "string"
+                      },
+                      "keywords": {
+                        "type": "string"
+                      },
+                      "siteName": {
+                        "type": "string"
+                      },
+                      "canonicalUrl": {
+                        "type": "string"
+                      },
+                      "twitterHandle": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "facebookPixelConfig": {
+                    "type": "object",
+                    "properties": {
+                      "pixelId": {
+                        "type": "string"
+                      },
+                      "accessToken": {
+                        "type": "string"
+                      },
+                      "testEventCode": {
+                        "type": "string"
+                      },
+                      "domainVerificationCode": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "enableCapi": {
+                        "type": "boolean"
+                      },
+                      "trackPageView": {
+                        "type": "boolean"
+                      },
+                      "trackViewContent": {
+                        "type": "boolean"
+                      },
+                      "trackAddToCart": {
+                        "type": "boolean"
+                      },
+                      "trackInitiateCheckout": {
+                        "type": "boolean"
+                      },
+                      "trackPurchase": {
+                        "type": "boolean"
+                      },
+                      "customCurrency": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "courierConfig": {
+                    "type": "object",
+                    "properties": {
+                      "steadfast": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "baseUrl": {
+                            "type": "string"
+                          },
+                          "apiKey": {
+                            "type": "string"
+                          },
+                          "secretKey": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "pathao": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "baseUrl": {
+                            "type": "string"
+                          },
+                          "storeId": {
+                            "type": "string"
+                          },
+                          "clientId": {
+                            "type": "string"
+                          },
+                          "clientSecret": {
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "password": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "defaultCourier": {
+                        "type": "string",
+                        "enum": [
+                          "steadfast",
+                          "pathao",
+                          "manual"
+                        ]
+                      },
+                      "autoSendOnConfirm": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "notificationConfig": {
+                    "type": "object",
+                    "properties": {
+                      "soundEnabled": {
+                        "type": "boolean"
+                      },
+                      "soundType": {
+                        "type": "string",
+                        "enum": [
+                          "cash",
+                          "chime",
+                          "bell"
+                        ]
+                      },
+                      "browserPushEnabled": {
+                        "type": "boolean"
+                      },
+                      "telegram": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "botToken": {
+                            "type": "string"
+                          },
+                          "chatId": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "version": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/settings/secrets": {
+      "get": {
+        "summary": "Decrypted secrets",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/backup": {
+      "get": {
+        "summary": "Download backup",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/backup/restore": {
+      "post": {
+        "summary": "Restore backup",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/health": {
+      "get": {
+        "summary": "Authenticated health",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/staff": {
+      "get": {
+        "summary": "Staff list",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/admin/audit": {
+      "get": {
+        "summary": "Audit log",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/internal/cron/cleanup": {
+      "get": {
+        "summary": "Cleanup cron",
+        "security": [
+          {
+            "cronBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    },
+    "/internal/cron/orders/expire-pending": {
+      "get": {
+        "summary": "Expire pending orders",
+        "security": [
+          {
+            "cronBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wrong role"
+          }
+        }
+      }
+    }
+  }
+}

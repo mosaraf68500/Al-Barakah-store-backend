@@ -10,7 +10,9 @@
  * create/update service - those assume a brand-new resource (slug/code uniqueness checks that a restore of the SAME data would
  * legitimately trip) and have side effects (per-item audit rows, rate limits) that a bulk restore must not repeat 1000 times.
  * A raw dump also round-trips every field losslessly (including `costPrice`, `deletedAt`, and the exact `{url,publicId}` image
- * objects) with nothing to re-derive.
+ * objects) with nothing to re-derive. JSON has no Date type, so date fields come back as ISO strings and are revived to
+ * real Dates before write — a string `createdAt` would both crash serializers (`toISOString`) and look older than every
+ * BSON Date, so pending-order expiry would cancel the whole restored book.
  *
  * Restore is an UPSERT, never a wipe: an id present in the backup overwrites/creates that document; anything NOT in the backup
  * is left completely alone (matches legacy's own per-item upsert semantics - nothing in this or the legacy tool ever deleted a

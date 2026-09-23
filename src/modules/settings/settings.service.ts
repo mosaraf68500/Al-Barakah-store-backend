@@ -105,6 +105,30 @@ export async function getSecret(path: SecretPath): Promise<string | undefined> {
   return env ? decryptField(env, aad(path)) : undefined;
 }
 
+/**
+ * Lift every `SECRET_PATHS` leaf out of a plaintext settings object (the seed export) and encrypt it.
+ * The returned `config` is what may be stored; plaintext secrets are not left in it.
+ */
+export function sealImportedSecrets(source: Obj): { config: Obj; secrets: Record<string, string>; present: SecretPath[]; empty: SecretPath[] } {
+  const config = structuredClone(source);
+  const secrets: Record<string, string> = {};
+  const present: SecretPath[] = [];
+  const empty: SecretPath[] = [];
+  for (const p of SECRET_PATHS) {
+    if (getPath(config, p) === undefined) continue;
+    const v = getPath(config, p);
+    deletePath(config, p);
+    if (typeof v !== 'string') throw new Error(`Settings field ${p} must be a string`);
+    if (v.trim() === '') {
+      empty.push(p);
+      continue;
+    }
+    secrets[dbKey(p)] = encryptField(v.trim(), aad(p));
+    present.push(p);
+  }
+  return { config, secrets, present, empty };
+}
+
 /* ---------------------------------------------------------------------- update */
 
 export async function updateSettings(actor: UserDocument, input: UpdateSettingsInput, req: Request) {

@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "openapi": "tsx scripts/build-openapi.ts",
     "seed:super-admin": "tsx scripts/seed-super-admin.ts",
+    "import:seed": "tsx scripts/import-seed.ts",
     "rotate-settings-key": "tsx scripts/rotate-settings-key.ts"
   },
   "engines": {

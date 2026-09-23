@@ -32,7 +32,7 @@ export const cookieOf = (res: request.Response, name: string): string | undefine
 export const cookieHeader = (name: string, value: string) => `${name}=${value}`;
 
 export const PHONE = '01712345678';
-export const PIN = '123456';
+export const PIN = 'Aa1!aa';
 
 export async function registerCustomer(a: Express, over: Record<string, unknown> = {}) {
   return request(a).post('/v1/auth/register').send({ phone: PHONE, name: 'Test Customer', pin: PIN, ...over });

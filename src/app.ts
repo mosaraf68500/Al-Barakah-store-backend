@@ -6,6 +6,7 @@ import { API_PREFIX } from './config/constants';
 import { connectDb, pingDb } from './config/db';
 import { getEnv } from './config/env';
 import { errorHandler, notFound } from './middleware/errorHandler';
+import { publicReadLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/requestLogger';
 import { adminAuthRoutes, adminStaffRoutes } from './modules/admin-auth/adminAuth.routes';
 import { authRoutes } from './modules/auth/auth.routes';
@@ -19,6 +20,7 @@ import { adminReviewRoutes, publicReviewRoutes } from './modules/reviews/review.
 import { wishlistRoutes } from './modules/wishlist/wishlist.routes';
 import { adminBackupRoutes } from './modules/adminOps/backup.routes';
 import { adminHealthRoutes } from './modules/adminOps/health.routes';
+import { adminIntegrationRoutes } from './modules/adminOps/integration.routes';
 import { adminSettingsRoutes, publicSettingsRoutes } from './modules/settings/settings.routes';
 import { cronRoutes } from './modules/cron/cleanup.routes';
 import { asyncHandler } from './utils/asyncHandler';
@@ -37,7 +39,13 @@ export function createApp(opts: AppOptions = {}): Express {
   app.set('trust proxy', env.TRUST_PROXY_HOPS);
 
   app.use(requestLogger);
-  app.use(helmet());
+  // API JSON is not a document. CSP denies everything; CORP stays cross-origin so shop./admin. can read credentialed responses. CORS remains the allow-list.
+  app.use(helmet({
+    contentSecurityPolicy: { useDefaults: false, directives: { defaultSrc: ["'none'"], baseUri: ["'none'"], frameAncestors: ["'none'"] } },
+    referrerPolicy: { policy: 'no-referrer' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false,
+  }));
   // SECURITY_RISKS #18: explicit allow-list (legacy reflected ANY origin with credentials)
   app.use(
     cors({
@@ -62,6 +70,7 @@ export function createApp(opts: AppOptions = {}): Express {
   }));
 
   const v1 = express.Router();
+  v1.use(publicReadLimiter(rateLimits));
   v1.get('/health', asyncHandler(async (_req, res) => {
     res.json({ status: 'ok', db: { ok: true, latencyMs: await pingDb() }, timestamp: new Date().toISOString() });
   }));
@@ -80,10 +89,11 @@ export function createApp(opts: AppOptions = {}): Express {
   v1.use('/admin/products', adminProductRoutes());
   v1.use('/orders', orderRoutes(rateLimits));
   v1.use('/admin/orders', adminOrderRoutes());
-  v1.use('/reviews', publicReviewRoutes());
+  v1.use('/reviews', publicReviewRoutes(rateLimits));
   v1.use('/admin/reviews', adminReviewRoutes());
   v1.use('/wishlist', wishlistRoutes());
-  v1.use('/admin/backup', adminBackupRoutes());
+  v1.use('/admin/backup', adminBackupRoutes(rateLimits));
+  v1.use('/admin/integrations', adminIntegrationRoutes());
   v1.use('/admin', adminHealthRoutes());
   v1.use('/internal/cron', cronRoutes());
   v1.use('/internal/cron/orders', orderCronRoutes());

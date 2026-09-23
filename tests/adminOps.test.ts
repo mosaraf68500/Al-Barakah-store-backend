@@ -126,4 +126,75 @@ describe('admin backup/restore - super_admin only', () => {
     const names = (await CategoryModel.find().lean()).map((c) => c.name);
     expect(names).toEqual(['Should Not Change']); // rolled back completely - not even "Duplicate" #1 was left behind
   });
+
+  it('revives JSON date strings to BSON Dates so product reads and pending-order expiry still work', async () => {
+    const { a, tok } = await superAdminCtx();
+    await patchSettings(a, tok, { deliveryConfig: { requireAdvanceDeliveryCharge: false } });
+    await mkCategory(a, tok, 'Date Category');
+    const prod = await mkProduct(a, tok, { category: 'Date Category', price: 100, stockCount: 5 });
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+    await request(a).post('/v1/admin/coupons').set(auth(tok)).send({ code: 'DATE10', discountPercent: 10, expiresAt }).expect(201);
+    const order = await request(a).post('/v1/orders').send({
+      items: [{ productId: prod.id, quantity: 1 }],
+      customer: { fullName: 'Date Buyer', phone: '01300000999', address: '1 Road', city: 'Inside Dhaka' },
+      paymentChoice: 'FULL_COD',
+    });
+    expect(order.status).toBe(201);
+    const orderId = order.body.order.id as string;
+
+    const backup = (await request(a).get('/v1/admin/backup').set(auth(tok))).body;
+    expect(typeof backup.data.products.find((p: { _id: string }) => p._id === prod.id).createdAt).toBe('string');
+    expect(typeof backup.data.orders[0].createdAt).toBe('string');
+    expect(typeof backup.data.settings.version).toBe('number');
+
+    await request(a).post('/v1/admin/backup/restore?confirm=RESTORE').set(auth(tok)).send(backup).expect(200);
+
+    expect((await ProductModel.findById(prod.id).lean())!.createdAt).toBeInstanceOf(Date);
+    expect((await CouponModel.findOne({ code: 'DATE10' }).lean())!.expiresAt).toBeInstanceOf(Date);
+    const orderAfter = await OrderModel.findById(orderId).lean();
+    expect(orderAfter!.createdAt).toBeInstanceOf(Date);
+    expect(orderAfter!.status).toBe('pending');
+
+    const listed = await request(a).get('/v1/admin/products').set(auth(tok));
+    expect(listed.status).toBe(200);
+    expect(listed.body.map((p: { id: string }) => p.id)).toContain(prod.id);
+    const coupons = await request(a).get('/v1/admin/coupons').set(auth(tok));
+    expect(coupons.status).toBe(200);
+    expect(coupons.body.find((c: { code: string }) => c.code === 'DATE10').expiresAt).toEqual(expect.any(String));
+    const pending = await request(a).get('/v1/admin/orders?status=pending').set(auth(tok));
+    expect(pending.body.find((o: { id: string }) => o.id === orderId)).toMatchObject({ status: 'pending' });
+  });
+
+  it('writes settings.version back, so a save after restore onto an empty settings doc is not stuck', async () => {
+    const { a, tok } = await superAdminCtx();
+    await patchSettings(a, tok, { storeName: 'Versioned Store' });
+    const backup = (await request(a).get('/v1/admin/backup').set(auth(tok))).body;
+    await SettingsModel.deleteMany({});
+    await request(a).post('/v1/admin/backup/restore?confirm=RESTORE').set(auth(tok)).send(backup).expect(200);
+    expect(typeof (await SettingsModel.findById('general').lean())!.version).toBe('number');
+    const saved = await patchSettings(a, tok, { storeName: 'Versioned Store 2' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.storeName).toBe('Versioned Store 2');
+  });
+
+  it('rejects an unknown backup version, a non-string _id, and an invalid date without writing', async () => {
+    const { a, tok } = await superAdminCtx();
+    await mkCategory(a, tok, 'Keep Me');
+    const backup = (await request(a).get('/v1/admin/backup').set(auth(tok))).body;
+
+    const legacy = await request(a).post('/v1/admin/backup/restore?confirm=RESTORE').set(auth(tok)).send({ ...backup, version: '1.0' });
+    expect(legacy.status).toBe(400);
+    expect(legacy.body.error).toBe('INVALID_BACKUP_FORMAT');
+
+    const badId = structuredClone(backup);
+    badId.data.products = [{ _id: { $gt: '' }, name: 'injected' }];
+    expect((await request(a).post('/v1/admin/backup/restore?confirm=RESTORE').set(auth(tok)).send(badId)).body.error).toBe('INVALID_BACKUP_FORMAT');
+
+    const badDate = structuredClone(backup);
+    badDate.data.categories[0].createdAt = 'not-a-date';
+    expect((await request(a).post('/v1/admin/backup/restore?dryRun=true').set(auth(tok)).send(badDate)).body.error).toBe('INVALID_BACKUP_FORMAT');
+
+    expect((await CategoryModel.find().lean()).map((c) => c.name)).toEqual(['Keep Me']);
+    expect(await ProductModel.countDocuments()).toBe(0);
+  });
 });

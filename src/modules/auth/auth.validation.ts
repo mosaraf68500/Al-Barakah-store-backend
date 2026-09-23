@@ -5,14 +5,14 @@ import { z } from 'zod';
 export const registerSchema = z.object({
   phone: z.string().max(40).default(''),
   name: z.string().trim().min(1, 'name required').max(120),
-  pin: z.string().max(40).default(''),
+  pin: z.string().max(128).default(''),
   address: z.string().trim().max(1000).optional(),
   email: z.string().trim().toLowerCase().email().max(254).optional(),
 });
-export const loginSchema = z.object({ phone: z.string().max(40).default(''), pin: z.string().max(40).default('') });
+export const loginSchema = z.object({ phone: z.string().max(40).default(''), pin: z.string().max(128).default('') });
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-export const changePinSchema = z.object({ currentPin: z.string().max(40).default(''), newPin: z.string().max(40).default('') });
+export const changePinSchema = z.object({ currentPin: z.string().max(128).default(''), newPin: z.string().max(128).default('') });
 
 /** `PATCH /auth/me`: `phone` is the login identity (like legacy's e-mail) and is NOT editable here - only `name`/`email`/`avatarUrl`, the fields legacy's own profile form let a customer change. */
 export const updateProfileSchema = z.object({

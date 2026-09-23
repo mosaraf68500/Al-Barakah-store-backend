@@ -9,7 +9,7 @@ import { CLIENT, PHONE, PIN, app, cookieHeader, cookieOf, registerCustomer } fro
 const RT = 'abp_rt_customer';
 
 describe('customer auth - register', () => {
-  it('registers with phone + 6-digit PIN, stores a bcrypt hash, returns access token + httpOnly refresh cookie', async () => {
+  it('registers with phone + a strong password, stores a bcrypt hash, returns access token + httpOnly refresh cookie', async () => {
     const a = app();
     const res = await registerCustomer(a, { address: 'House 1, Dhaka' });
     expect(res.status).toBe(201);
@@ -224,7 +224,7 @@ describe('lockout ceiling + account-level throttle (Module 1 follow-ups)', () =>
 });
 
 describe('POST /v1/auth/change-pin', () => {
-  const NEW = '654321';
+  const NEW = 'Bb2@bb';
   const change = (a: ReturnType<typeof app>, token: string, rt: string | undefined, body: object) => {
     const r = request(a).post('/v1/auth/change-pin').set('Authorization', `Bearer ${token}`);
     return (rt ? r.set('Cookie', cookieHeader(RT, rt)) : r).send(body);

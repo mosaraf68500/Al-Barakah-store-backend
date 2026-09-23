@@ -49,6 +49,9 @@ describe('http baseline', () => {
     expect(h.body).toMatchObject({ status: 'ok', db: { ok: true } });
     expect(h.headers['x-content-type-options']).toBe('nosniff');
     expect(h.headers['x-powered-by']).toBeUndefined();
+    expect(h.headers['content-security-policy']).toContain("default-src 'none'");
+    expect(h.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    expect(h.headers['referrer-policy']).toBe('no-referrer');
     expect(h.headers['x-request-id']).toBeTruthy();
     const nf = await request(a).get('/v1/nope');
     expect(nf.status).toBe(404);
