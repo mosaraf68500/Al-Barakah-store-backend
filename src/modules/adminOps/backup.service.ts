@@ -45,8 +45,30 @@ export interface BackupPayload {
     coupons: Record<string, unknown>[];
     reviews: Record<string, unknown>[];
     orders: Record<string, unknown>[];
-    settings: { config: Record<string, unknown> } | null;
+    settings: { config: Record<string, unknown>; version: number } | null;
   };
+}
+
+const DATE_KEYS = new Set(['createdAt', 'updatedAt', 'deletedAt', 'expiresAt']);
+
+/** JSON has no Date. Revive ISO strings on known date fields; reject anything else so a bad file never writes. */
+function reviveDates(value: unknown, path: string): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => reviveDates(item, `${path}[${i}]`));
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  const row = value as Record<string, unknown>;
+  for (const [key, val] of Object.entries(row)) {
+    if (DATE_KEYS.has(key)) {
+      if (val == null || val instanceof Date) continue;
+      const parsed = typeof val === 'string' ? new Date(val) : null;
+      if (!parsed || Number.isNaN(parsed.getTime())) throw ApiError.badRequest('INVALID_BACKUP_FORMAT', `Invalid date at ${path}.${key}`);
+      row[key] = parsed;
+    } else if (val && typeof val === 'object') {
+      reviveDates(val, `${path}.${key}`);
+    }
+  }
 }
 
 /** `GET /admin/backup` - super_admin only (full, unmasked order PII). */
@@ -71,7 +93,7 @@ export async function createBackup(actor: UserDocument, req: Request): Promise<B
       coupons: coupons as unknown as Record<string, unknown>[],
       reviews: reviews as unknown as Record<string, unknown>[],
       orders: orders as unknown as Record<string, unknown>[],
-      settings: settingsDoc ? { config: settingsDoc.config as Record<string, unknown> } : null,
+      settings: settingsDoc ? { config: settingsDoc.config as Record<string, unknown>, version: typeof settingsDoc.version === 'number' ? settingsDoc.version : 0 } : null,
     },
   };
 }
@@ -87,9 +109,14 @@ export interface RestoreResult { ok: true; dryRun: boolean; counts: RestoreCount
  */
 export async function restoreBackup(actor: UserDocument, payload: BackupPayload, opts: { dryRun?: boolean; confirm?: string }, req: Request): Promise<RestoreResult> {
   if (!payload || typeof payload !== 'object' || !payload.data || typeof payload.data !== 'object') throw ApiError.badRequest('INVALID_BACKUP_FORMAT', 'The uploaded file is not a recognised backup');
+  if (payload.version !== BACKUP_VERSION) throw ApiError.badRequest('INVALID_BACKUP_FORMAT', 'This file is not a version 3.0.0 backup');
   const { products = [], categories = [], coupons = [], reviews = [], orders = [], settings } = payload.data;
   for (const [name, rows] of [['products', products], ['categories', categories], ['coupons', coupons], ['reviews', reviews], ['orders', orders]] as const) {
-    if (!Array.isArray(rows) || rows.some((r) => !r || typeof r !== 'object' || !r._id)) throw ApiError.badRequest('INVALID_BACKUP_FORMAT', `"${name}" must be an array of documents with an _id`);
+    if (!Array.isArray(rows) || rows.some((r) => !r || typeof r !== 'object' || typeof r._id !== 'string' || !r._id)) throw ApiError.badRequest('INVALID_BACKUP_FORMAT', `"${name}" must be an array of documents with a string _id`);
+    reviveDates(rows, name);
+  }
+  if (settings?.config && (typeof settings.version !== 'number' || !Number.isInteger(settings.version) || settings.version < 0)) {
+    throw ApiError.badRequest('INVALID_BACKUP_FORMAT', 'settings.version must be a non-negative integer');
   }
   const counts: RestoreCounts = { products: products.length, categories: categories.length, coupons: coupons.length, reviews: reviews.length, orders: orders.length, settingsRestored: Boolean(settings?.config) };
 
@@ -106,7 +133,7 @@ export async function restoreBackup(actor: UserDocument, payload: BackupPayload,
       if (coupons.length) await CouponModel.collection.bulkWrite(upsert(coupons), { session });
       if (reviews.length) await ReviewModel.collection.bulkWrite(upsert(reviews), { session });
       if (orders.length) await OrderModel.collection.bulkWrite(upsert(orders), { session });
-      if (settings?.config) await SettingsModel.collection.updateOne({ _id: SETTINGS_ID } as never, { $set: { config: settings.config } }, { session, upsert: true });
+      if (settings?.config) await SettingsModel.collection.updateOne({ _id: SETTINGS_ID } as never, { $set: { config: settings.config, version: settings.version } }, { session, upsert: true });
     });
     // Recorded prominently: its own distinct action name, full per-collection counts, and (via `req`) the acting super_admin + IP.
     await recordAudit({ actor: actorOf(actor), action: 'admin.backup_restored', entity: 'Database', details: { ...counts }, req });
