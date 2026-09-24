@@ -31,7 +31,6 @@ const schema = z
     SETTINGS_ENCRYPTION_KEY_PREVIOUS: optStr,
     BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
     CUSTOMER_ACCESS_TTL_MIN: z.coerce.number().int().positive().default(15),
-    ADMIN_ACCESS_TTL_MIN: z.coerce.number().int().positive().default(5),
     ADMIN_IDLE_MIN: z.coerce.number().int().positive().default(10),
     ADMIN_SESSION_MAX_HOURS: z.coerce.number().int().positive().default(12),
     CUSTOMER_SESSION_MAX_DAYS: z.coerce.number().int().positive().default(30),

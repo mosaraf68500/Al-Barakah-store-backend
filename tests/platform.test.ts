@@ -28,7 +28,7 @@ describe('env validation (fail fast)', () => {
     const e = parseEnv(base);
     expect(e.ENABLE_LIVE_INTEGRATIONS).toBe(false);
     expect(e.corsOrigins).toEqual(['https://shop.test', 'https://admin.test']);
-    expect(e.ADMIN_ACCESS_TTL_MIN).toBe(5);
+    expect(e.ADMIN_SESSION_MAX_HOURS).toBe(12);
   });
 });
 

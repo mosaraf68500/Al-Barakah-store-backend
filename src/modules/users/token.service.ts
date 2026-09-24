@@ -11,7 +11,7 @@ import { UserModel, type UserDoc } from './user.model';
 export interface AccessClaims { sub: string; role: Role; aud: Audience; tv: number; jti: string }
 interface RefreshClaims { sub: string; fam: string; jti: string; aud: Audience; ssa: number }
 
-const accessTtlSeconds = (aud: Audience) => (aud === 'admin' ? getEnv().ADMIN_ACCESS_TTL_MIN : getEnv().CUSTOMER_ACCESS_TTL_MIN) * 60;
+const accessTtlSeconds = (aud: Audience) => (aud === 'admin' ? getEnv().ADMIN_SESSION_MAX_HOURS * 3600 : getEnv().CUSTOMER_ACCESS_TTL_MIN * 60);
 const sessionMaxMs = (aud: Audience) => (aud === 'admin' ? getEnv().ADMIN_SESSION_MAX_HOURS * 3600_000 : getEnv().CUSTOMER_SESSION_MAX_DAYS * 86400_000);
 const adminIdleMs = () => getEnv().ADMIN_IDLE_MIN * 60_000;
 
