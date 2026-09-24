@@ -1,6 +1,6 @@
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import express, { type Express } from 'express';
+import express, { type Express, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { API_PREFIX } from './config/constants';
 import { connectDb, pingDb } from './config/db';
@@ -98,8 +98,22 @@ export function createApp(opts: AppOptions = {}): Express {
   v1.use('/internal/cron', cronRoutes());
   v1.use('/internal/cron/orders', orderCronRoutes());
   app.use(API_PREFIX, v1);
+  app.get('/', (_req, res) => {
+    res.json({ status: 'ok', service: 'al-barakah-backend' });
+  });
 
   app.use(notFound);
   app.use(errorHandler);
   return app;
+}
+
+/**
+ * Vercel treats `src/app.ts` as the server entry and rejects the file unless the
+ * default export is a function. The app is built on the first request so tests
+ * can import `createApp` before their database URL exists.
+ */
+let vercelApp: Express | undefined;
+export default function vercelHandler(req: Request, res: Response) {
+  vercelApp ??= createApp();
+  return vercelApp(req, res);
 }
