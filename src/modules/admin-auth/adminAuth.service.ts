@@ -104,9 +104,9 @@ export async function adminVerifyOtp(input: { email: string; code: string }, req
   await clearFailures(lockKey(email));
   user.lastLoginAt = new Date();
   await user.save();
-  const { token, expiresIn } = await issueSession(user, 'admin', req, res);
+  const { token, expiresIn, refreshToken } = await issueSession(user, 'admin', req, res);
   await recordAudit({ actor: { id: user._id, email, role: user.role }, action: 'admin.login.success', entity: 'User', entityId: String(user._id), req });
-  return { accessToken: token, expiresIn, session: toAdminSession(user) };
+  return { accessToken: token, expiresIn, refreshToken, session: toAdminSession(user) };
 }
 
 /** super_admin: create (or re-activate a previously revoked) admin and send a one-time set-password invite. */

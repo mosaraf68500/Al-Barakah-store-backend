@@ -38,8 +38,8 @@ function signRefresh(claims: RefreshClaims, expiresAt: Date): string {
 /** Start a brand-new session (new token family). */
 export async function issueSession(user: Pick<UserDoc, '_id' | 'role' | 'tokenVersion'>, aud: Audience, req: Request, res: Response) {
   const now = Date.now();
-  await createRefresh(String(user._id), aud, randomId(), now, req, res);
-  return signAccessToken(user, aud);
+  const refresh = await createRefresh(String(user._id), aud, randomId(), now, req, res);
+  return { ...signAccessToken(user, aud), refreshToken: refresh.token };
 }
 
 async function createRefresh(userId: string, aud: Audience, familyId: string, sessionStartedAt: number, req: Request, res: Response) {
@@ -60,20 +60,31 @@ async function createRefresh(userId: string, aud: Audience, familyId: string, se
   return { token, id: doc._id };
 }
 
-export function setRefreshCookie(res: Response, aud: Audience, token: string, expiresAt: Date) {
+function refreshCookieOptions(aud: Audience) {
   const env = getEnv();
-  res.cookie(REFRESH_COOKIE[aud], token, {
+  const crossSite = env.NODE_ENV === 'production';
+  return {
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    domain: env.COOKIE_DOMAIN,
+    secure: crossSite,
+    sameSite: crossSite ? ('none' as const) : ('lax' as const),
+    ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
     path: REFRESH_COOKIE_PATH[aud],
-    expires: expiresAt,
-  });
+  };
+}
+
+/** Cookie first. The header is the copy the browser can keep when two *.vercel.app hosts cannot share a cookie. */
+export function readRefreshToken(req: Request, aud: Audience): string | undefined {
+  const cookie = req.cookies?.[REFRESH_COOKIE[aud]];
+  if (typeof cookie === 'string' && cookie) return cookie;
+  const header = req.get('X-Abp-Refresh');
+  return header || undefined;
+}
+
+export function setRefreshCookie(res: Response, aud: Audience, token: string, expiresAt: Date) {
+  res.cookie(REFRESH_COOKIE[aud], token, { ...refreshCookieOptions(aud), expires: expiresAt });
 }
 export function clearRefreshCookie(res: Response, aud: Audience) {
-  const env = getEnv();
-  res.clearCookie(REFRESH_COOKIE[aud], { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'lax', domain: env.COOKIE_DOMAIN, path: REFRESH_COOKIE_PATH[aud] });
+  res.clearCookie(REFRESH_COOKIE[aud], refreshCookieOptions(aud));
 }
 
 export async function revokeFamily(familyId: string) {
@@ -133,7 +144,7 @@ export async function rotateRefreshToken(rawToken: string | undefined, aud: Audi
   }
   const next = await createRefresh(String(user._id), aud, stored.familyId, stored.sessionStartedAt.getTime(), req, res);
   await RefreshTokenModel.updateOne({ _id: stored._id }, { $set: { replacedBy: next.id } });
-  return { user, ...signAccessToken(user, aud) };
+  return { user, refreshToken: next.token, ...signAccessToken(user, aud) };
 }
 
 export async function revokeByRawToken(rawToken: string | undefined) {

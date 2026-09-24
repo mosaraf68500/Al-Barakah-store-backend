@@ -1,9 +1,8 @@
 import type { Request, Response } from 'express';
-import { REFRESH_COOKIE } from '../../config/constants';
 import { ApiResponse } from '../../utils/ApiResponse';
 import { listAudit } from '../audit/audit.service';
 import { toAdminSession } from '../users/user.serializer';
-import { assertCsrf, clearRefreshCookie, revokeByRawToken, rotateRefreshToken } from '../users/token.service';
+import { assertCsrf, clearRefreshCookie, readRefreshToken, revokeByRawToken, rotateRefreshToken } from '../users/token.service';
 import * as svc from './adminAuth.service';
 
 export const login = async (req: Request, res: Response) => ApiResponse.ok(res, await svc.adminLogin(req.body, req));
@@ -15,12 +14,12 @@ export const resendOtp = async (req: Request, res: Response) => {
 
 export async function refresh(req: Request, res: Response) {
   assertCsrf(req);
-  const r = await rotateRefreshToken(req.cookies?.[REFRESH_COOKIE.admin], 'admin', req, res);
-  ApiResponse.ok(res, { accessToken: r.token, expiresIn: r.expiresIn, session: toAdminSession(r.user) });
+  const r = await rotateRefreshToken(readRefreshToken(req, 'admin'), 'admin', req, res);
+  ApiResponse.ok(res, { accessToken: r.token, expiresIn: r.expiresIn, refreshToken: r.refreshToken, session: toAdminSession(r.user) });
 }
 export async function logout(req: Request, res: Response) {
   assertCsrf(req);
-  await revokeByRawToken(req.cookies?.[REFRESH_COOKIE.admin]);
+  await revokeByRawToken(readRefreshToken(req, 'admin'));
   clearRefreshCookie(res, 'admin');
   ApiResponse.noContent(res);
 }

@@ -52,7 +52,7 @@ export function createApp(opts: AppOptions = {}): Express {
       origin: (origin, cb) => (!origin || env.corsOrigins.includes(origin) ? cb(null, true) : cb(new Error('CORS_ORIGIN_NOT_ALLOWED'))),
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Abp-Client', 'X-Request-Id'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Abp-Client', 'X-Abp-Refresh', 'X-Request-Id'],
       maxAge: 600,
     }),
   );

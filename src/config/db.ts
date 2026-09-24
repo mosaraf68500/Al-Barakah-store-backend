@@ -16,6 +16,11 @@ const cache: Cache = (g.__abpMongo ??= { conn: null, promise: null });
 
 export async function connectDb(): Promise<typeof mongoose> {
   if (cache.conn && mongoose.connection.readyState === 1) return cache.conn;
+  // A warm Vercel instance can wake up with a dead socket. The old promise must not be reused.
+  if (mongoose.connection.readyState !== 2) {
+    cache.conn = null;
+    cache.promise = null;
+  }
   if (!cache.promise) {
     mongoose.set('strictQuery', true);
     cache.promise = mongoose
@@ -45,7 +50,10 @@ export async function disconnectDb(): Promise<void> {
 }
 
 export async function pingDb(): Promise<number> {
+  await connectDb();
+  const db = mongoose.connection.db;
+  if (!db) throw new Error('mongodb not connected');
   const t = Date.now();
-  await mongoose.connection.db!.admin().ping();
+  await db.admin().ping();
   return Date.now() - t;
 }
