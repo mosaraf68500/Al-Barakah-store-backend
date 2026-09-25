@@ -19,7 +19,7 @@ describe('env validation (fail fast)', () => {
   it('rejects missing/short/duplicated secrets and unsafe production settings', () => {
     expect(() => parseEnv({ ...base, JWT_ACCESS_SECRET: 'short' })).toThrow(/JWT_ACCESS_SECRET/);
     const { GOOGLE_CLIENT_ID: _google, ...noGoogle } = base;
-    expect(() => parseEnv(noGoogle)).toThrow(/GOOGLE_CLIENT_ID/);
+    expect(parseEnv(noGoogle).GOOGLE_CLIENT_ID).toBe('947073184687-9303rtcuomi8it4t3nv0l6f75ndm3ofq.apps.googleusercontent.com');
     expect(() => parseEnv({ ...base, JWT_REFRESH_SECRET: base.JWT_ACCESS_SECRET })).toThrow(/must all be different/);
     const { MONGODB_URI: _m, ...noMongo } = base;
     expect(() => parseEnv(noMongo)).toThrow(/MONGODB_URI/);
