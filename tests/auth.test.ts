@@ -17,7 +17,8 @@ describe('customer auth - register', () => {
     expect(res.body.user).toMatchObject({ name: 'Test Customer', phone: PHONE, role: 'customer' });
     expect(res.body.user.addresses[0].isDefault).toBe(true);
     expect(JSON.stringify(res.body.user)).not.toMatch(/passwordHash|"pin"|\$2[aby]\$/);
-    expect(Object.keys(res.body).sort()).toEqual(['accessToken', 'expiresIn', 'user']);
+    expect(res.body.refreshToken).toMatch(/^eyJ/);
+    expect(Object.keys(res.body).sort()).toEqual(['accessToken', 'expiresIn', 'refreshToken', 'user']);
 
     const setCookie = ([] as string[]).concat(res.headers['set-cookie']).find((c) => c.startsWith(RT))!;
     expect(setCookie).toMatch(/HttpOnly/i);
@@ -131,6 +132,28 @@ describe('customer auth - refresh rotation, reuse detection, logout, access chec
     const after = await request(a).post('/v1/auth/refresh').set(CLIENT).set('Cookie', cookieHeader(RT, rt2));
     expect(after.status).toBe(401);
     expect(await RefreshTokenModel.countDocuments({ revokedAt: null })).toBe(0);
+  });
+
+  it('rotates from the X-Abp-Refresh header when no cookie is sent', async () => {
+    const a = app();
+    const reg = await registerCustomer(a);
+    const rt1 = reg.body.refreshToken as string;
+    const res = await request(a).post('/v1/auth/refresh').set(CLIENT).set('X-Abp-Refresh', rt1);
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toMatch(/^eyJ/);
+    expect(res.body.refreshToken).toMatch(/^eyJ/);
+    expect(res.body.refreshToken).not.toBe(rt1);
+    const again = await request(a).post('/v1/auth/refresh').set(CLIENT).set('X-Abp-Refresh', res.body.refreshToken);
+    expect(again.status).toBe(200);
+    expect(again.body.refreshToken).not.toBe(res.body.refreshToken);
+  });
+
+  it('logout via the header revokes that session even with no cookie', async () => {
+    const a = app();
+    const rt = (await registerCustomer(a)).body.refreshToken as string;
+    const out = await request(a).post('/v1/auth/logout').set(CLIENT).set('X-Abp-Refresh', rt);
+    expect(out.status).toBe(204);
+    expect((await request(a).post('/v1/auth/refresh').set(CLIENT).set('X-Abp-Refresh', rt)).status).toBe(401);
   });
 
   it('refresh needs the CSRF header and an allowed Origin; forged / missing cookies fail', async () => {

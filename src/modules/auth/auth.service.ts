@@ -46,8 +46,8 @@ export async function registerCustomer(input: RegisterInput, req: Request, res: 
     throw e;
   }
   await recordAudit({ actor: { id: user._id, email: user.email, role: 'customer' }, action: 'customer.register', entity: 'User', entityId: String(user._id), req });
-  const { token, expiresIn } = await issueSession(user, 'customer', req, res);
-  return { accessToken: token, expiresIn, user: toCustomerProfile(user) };
+  const { token, expiresIn, refreshToken } = await issueSession(user, 'customer', req, res);
+  return { accessToken: token, expiresIn, refreshToken, user: toCustomerProfile(user) };
 }
 
 export async function loginCustomer(input: LoginInput, req: Request, res: Response) {
@@ -78,8 +78,8 @@ export async function loginCustomer(input: LoginInput, req: Request, res: Respon
   await clearFailures(lockKey);
   user!.lastLoginAt = new Date();
   await user!.save();
-  const { token, expiresIn } = await issueSession(user!, 'customer', req, res);
-  return { accessToken: token, expiresIn, user: toCustomerProfile(user!) };
+  const { token, expiresIn, refreshToken } = await issueSession(user!, 'customer', req, res);
+  return { accessToken: token, expiresIn, refreshToken, user: toCustomerProfile(user!) };
 }
 
 

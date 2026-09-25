@@ -72,12 +72,16 @@ function refreshCookieOptions(aud: Audience) {
   };
 }
 
-/** Cookie first. The header is the copy the browser can keep when two *.vercel.app hosts cannot share a cookie. */
+/**
+ * Header first. The shop and dashboard keep the latest refresh token in sessionStorage and send it here,
+ * because a cookie set by the Vercel API host is a third-party cookie on albarakahpremium.com and browsers drop it.
+ * The cookie is only the fallback when the header was not sent (older sessions, and the tests).
+ */
 export function readRefreshToken(req: Request, aud: Audience): string | undefined {
-  const cookie = req.cookies?.[REFRESH_COOKIE[aud]];
-  if (typeof cookie === 'string' && cookie) return cookie;
   const header = req.get('X-Abp-Refresh');
-  return header || undefined;
+  if (header) return header;
+  const cookie = req.cookies?.[REFRESH_COOKIE[aud]];
+  return typeof cookie === 'string' && cookie ? cookie : undefined;
 }
 
 export function setRefreshCookie(res: Response, aud: Audience, token: string, expiresAt: Date) {
