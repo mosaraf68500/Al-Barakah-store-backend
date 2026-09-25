@@ -59,7 +59,7 @@ const OPERATIONS: Operation[] = [
   { method: 'get', path: '/reviews', summary: 'Public reviews', auth: 'none' },
   { method: 'post', path: '/reviews', summary: 'Create a review', auth: 'customer', body: createReviewSchema },
   { method: 'post', path: '/coupons/validate', summary: 'Validate a coupon', auth: 'none', body: validateBodySchema },
-  { method: 'post', path: '/orders', summary: 'Place an order', auth: 'none', body: createOrderSchema },
+  { method: 'post', path: '/orders', summary: 'Place an order', auth: 'customer', body: createOrderSchema },
   { method: 'get', path: '/orders/track/{code}', summary: 'Masked order tracking', auth: 'none' },
   { method: 'get', path: '/orders/my', summary: 'My orders', auth: 'customer' },
   { method: 'get', path: '/wishlist', summary: 'List wishlist', auth: 'customer' },

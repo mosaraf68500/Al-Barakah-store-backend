@@ -8,7 +8,7 @@ import { ProductModel } from '../src/modules/products/product.model';
 import { ReviewModel } from '../src/modules/reviews/review.model';
 import { SettingsModel } from '../src/modules/settings/settings.model';
 import { UserModel } from '../src/modules/users/user.model';
-import { adminCtx, adminSignIn, app, auth, makeUser, mkCategory, mkMedia, mkProduct, patchSettings, registerCustomer } from './helpers';
+import { adminCtx, adminSignIn, app, auth, orderAuth, makeUser, mkCategory, mkMedia, mkProduct, patchSettings, registerCustomer } from './helpers';
 
 async function superAdminCtx() {
   const a = app();
@@ -134,7 +134,7 @@ describe('admin backup/restore - super_admin only', () => {
     const prod = await mkProduct(a, tok, { category: 'Date Category', price: 100, stockCount: 5 });
     const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
     await request(a).post('/v1/admin/coupons').set(auth(tok)).send({ code: 'DATE10', discountPercent: 10, expiresAt }).expect(201);
-    const order = await request(a).post('/v1/orders').send({
+    const order = await request(a).post('/v1/orders').set(await orderAuth(a)).send({
       items: [{ productId: prod.id, quantity: 1 }],
       customer: { fullName: 'Date Buyer', phone: '01300000999', address: '1 Road', city: 'Inside Dhaka' },
       paymentChoice: 'FULL_COD',

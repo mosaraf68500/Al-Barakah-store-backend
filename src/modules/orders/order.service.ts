@@ -94,13 +94,13 @@ export async function expirePendingOrders(now = new Date()): Promise<{ expired: 
 /* ------------------------------------------------------------------------------------------------------------ order creation */
 
 /**
- * Places an order (guest or logged-in). ONE MongoDB transaction covers everything: expiring any stale pending order that is
+ * Places an order for a signed-in customer. ONE MongoDB transaction covers everything: expiring any stale pending order that is
  * holding stock this order needs, reading & locking the products' current price and stock, redeeming the coupon (if any), and
  * inserting the order. Any failure - insufficient stock, an exhausted/expired coupon, a payment-policy violation - aborts the
  * WHOLE transaction, so nothing is half-applied and no compensation is needed. Client-sent prices/totals do not exist in this
  * function's input: every amount comes from the server's own product/settings data.
  */
-export async function createOrder(input: CreateOrderInput, authUser: UserDocument | null, req: Request) {
+export async function createOrder(input: CreateOrderInput, authUser: UserDocument, req: Request) {
   const phone = toPlus880(input.customer.phone);
   if (!phone) throw ApiError.badRequest('INVALID_BD_PHONE');
   const key = last10(phone); // last 10 digits, same rule as customer accounts (phoneKey just takes the last 10 chars, prefix-agnostic)
@@ -155,7 +155,7 @@ export async function createOrder(input: CreateOrderInput, authUser: UserDocumen
         const [created] = await OrderModel.create(
           [{
             _id: id,
-            userId: authUser ? String(authUser._id) : null,
+            userId: String(authUser._id),
             customer: { fullName: input.customer.fullName, email: input.customer.email || undefined, phone, address: input.customer.address, city: input.customer.city, postalCode: undefined },
             phoneKey: key,
             items: lines,
@@ -171,7 +171,7 @@ export async function createOrder(input: CreateOrderInput, authUser: UserDocumen
         );
         return created;
       });
-      await recordAudit({ actor: authUser ? actorOf(authUser) : { email: 'guest', role: 'guest' }, action: 'order.create', entity: 'Order', entityId: id, details: { total: doc.total, paymentChoice: input.paymentChoice, couponCode: doc.couponCode, zoneUncertain: doc.zoneUncertain }, req });
+      await recordAudit({ actor: actorOf(authUser), action: 'order.create', entity: 'Order', entityId: id, details: { total: doc.total, paymentChoice: input.paymentChoice, couponCode: doc.couponCode, zoneUncertain: doc.zoneUncertain }, req });
       // Fire-and-forget (Module 10): the order already succeeded, so a notification failure must never surface here - NOT awaited.
       notifyOrderPlaced(doc).catch((err) => logger.warn({ err, orderId: id }, 'notifyOrderPlaced rejected unexpectedly (ignored)'));
       return toFullOrder(doc);

@@ -6,7 +6,7 @@ import { dispatchToSteadfast } from '../src/modules/courier/steadfast';
 import { dispatchToPathao } from '../src/modules/courier/pathao';
 import { OrderModel } from '../src/modules/orders/order.model';
 import { ProductModel } from '../src/modules/products/product.model';
-import { adminCtx, app, auth, mkProduct, patchSettings } from './helpers';
+import { adminCtx, app, auth, orderAuth, mkProduct, patchSettings } from './helpers';
 
 let seq = 80_000_000;
 const nextPhone = () => `016${String(seq++).padStart(8, '0')}`;
@@ -34,7 +34,7 @@ const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringif
 async function place(a: ReturnType<typeof app>, tok: string, over: Record<string, unknown> = {}) {
   await relaxCod(a, tok);
   const p = await mkProduct(a, tok, { price: 1000, stockCount: 5 });
-  const res = await request(a).post('/v1/orders').send({
+  const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send({
     items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'Rafiq Islam', phone: nextPhone(), address: '4/B Dhanmondi', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD', ...over,
   });
   return { order: (await OrderModel.findById(res.body.order.id))!, product: p };

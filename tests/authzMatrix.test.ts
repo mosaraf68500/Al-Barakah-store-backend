@@ -14,7 +14,7 @@ const ROUTES: { method: 'get' | 'post' | 'put' | 'patch' | 'delete'; path: strin
   { method: 'get', path: '/v1/settings/public', gate: 'open' },
   { method: 'get', path: '/v1/reviews', gate: 'open' },
   { method: 'post', path: '/v1/coupons/validate', gate: 'open' },
-  { method: 'post', path: '/v1/orders', gate: 'open' },
+  { method: 'post', path: '/v1/orders', gate: 'customer' },
   { method: 'get', path: '/v1/orders/track/AB-000000', gate: 'open' },
   { method: 'post', path: '/v1/auth/register', gate: 'open' },
   { method: 'post', path: '/v1/auth/login', gate: 'open' },

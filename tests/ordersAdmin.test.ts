@@ -5,7 +5,7 @@ import { deriveZone } from '../src/domain/zone';
 import { AuditLogModel } from '../src/modules/audit/audit.model';
 import { OrderModel } from '../src/modules/orders/order.model';
 import { ProductModel } from '../src/modules/products/product.model';
-import { adminCtx, app, auth, mkProduct, patchSettings, registerCustomer } from './helpers';
+import { adminCtx, app, auth, orderAuth, mkProduct, patchSettings, registerCustomer } from './helpers';
 
 let seq = 50_000_000;
 const nextPhone = () => `018${String(seq++).padStart(8, '0')}`;
@@ -20,7 +20,7 @@ async function place(a: ReturnType<typeof app>, tok: string, over: Record<string
   const p = over.__product as { id: string } | undefined;
   const prod = p ?? (await mkProduct(a, tok, { price: 500, stockCount: 5 }));
   const body = guestOrder({ items: [{ productId: prod.id, quantity: 1 }], ...over });
-  const res = await request(a).post('/v1/orders').send(body);
+  const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(body);
   return { res, product: prod };
 }
 
@@ -48,11 +48,11 @@ describe('order creation - zone flagging end to end', () => {
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok, { price: 100, stockCount: 10 });
-    const good = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'X', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' } }));
+    const good = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'X', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' } }));
     expect(good.body.order).toMatchObject({ shipping: 80, deliveryZone: 'inside' });
     expect(good.body.order).not.toHaveProperty('zoneUncertain');
 
-    const bad = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'X', phone: nextPhone(), address: 'a', city: 'Rangpur' } }));
+    const bad = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'X', phone: nextPhone(), address: 'a', city: 'Rangpur' } }));
     expect(bad.body.order).toMatchObject({ shipping: 160, deliveryZone: 'outside', zoneUncertain: true });
     const stored = await OrderModel.findById(bad.body.order.id).lean();
     expect(stored!.zoneUncertain).toBe(true);
@@ -152,7 +152,7 @@ describe('admin orders - list + detail', () => {
     const cust = await registerCustomer(a);
     const first = await request(a).post('/v1/orders').set(auth(cust.body.accessToken)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], notes: 'leave at gate', paymentChoice: 'FULL_BKASH', bkashTrxId: 'ABC1' }));
     await new Promise((r) => setTimeout(r, 5));
-    const second = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }] }));
+    const second = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }] }));
 
     const list = await request(a).get('/v1/admin/orders').set(auth(tok));
     expect(list.status).toBe(200);
@@ -243,7 +243,7 @@ describe('admin orders - fake-suspicion toggle (BUG_FIXES A11, un-flag data-loss
   it('THE FIX: an ADVANCE_PENDING order flagged then un-flagged is restored to ADVANCE_PENDING, not reset to COD_PENDING', async () => {
     const { a, tok } = await adminCtx();
     const p = await mkProduct(a, tok, { price: 500, stockCount: 5 });
-    const adv = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'F1' }));
+    const adv = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'F1' }));
     const id = adv.body.order.id;
     expect(adv.body.order.deliveryPaymentStatus).toBe('ADVANCE_PENDING');
 
@@ -252,7 +252,7 @@ describe('admin orders - fake-suspicion toggle (BUG_FIXES A11, un-flag data-loss
     expect(unflagged.body.order.deliveryPaymentStatus).toBe('ADVANCE_PENDING'); // not COD_PENDING - the old bug would have lost this
 
     // same for a FULL_BKASH order (FULL_PAID) and one already admin-verified (VERIFIED)
-    const full = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH', bkashTrxId: 'F2' }));
+    const full = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH', bkashTrxId: 'F2' }));
     await request(a).patch(`/v1/admin/orders/${full.body.order.id}`).set(auth(tok)).send({ toggleFakeSuspicion: true }).expect(200);
     const fullUnflagged = await request(a).patch(`/v1/admin/orders/${full.body.order.id}`).set(auth(tok)).send({ toggleFakeSuspicion: true });
     expect(fullUnflagged.body.order.deliveryPaymentStatus).toBe('FULL_PAID');
@@ -261,7 +261,7 @@ describe('admin orders - fake-suspicion toggle (BUG_FIXES A11, un-flag data-loss
   it('flag then re-flag without ever un-flagging keeps the ORIGINAL pre-flag status (does not overwrite it with FAKE_SUSPECTED itself)', async () => {
     const { a, tok } = await adminCtx();
     const p = await mkProduct(a, tok, { price: 500, stockCount: 5 });
-    const adv = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'F3' }));
+    const adv = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'F3' }));
     const id = adv.body.order.id;
     await request(a).patch(`/v1/admin/orders/${id}`).set(auth(tok)).send({ toggleFakeSuspicion: true }).expect(200); // flag
     await request(a).patch(`/v1/admin/orders/${id}`).set(auth(tok)).send({ toggleFakeSuspicion: true }).expect(200); // un-flag (back to ADVANCE_PENDING)
@@ -286,7 +286,7 @@ describe('admin orders - payment status (generic override + the new verify-payme
   it('verify-payment: ADVANCE_PENDING -> ADVANCE_PAID (decision #3), audited distinctly; refuses any other starting state', async () => {
     const { a, tok } = await adminCtx();
     const p = await mkProduct(a, tok, { price: 500, stockCount: 5 });
-    const adv = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'ADV-9' }));
+    const adv = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'ADV-9' }));
     expect(adv.body.order.deliveryPaymentStatus).toBe('ADVANCE_PENDING');
     const id = adv.body.order.id;
 
@@ -312,12 +312,12 @@ describe('admin orders - dispatch (SIMULATED) and the courier COD-amount fix (BU
     expect(codDispatch.body.courier).toMatchObject({ success: true, provider: 'steadfast', simulated: true, codAmount: cod.res.body.order.total });
     expect(codDispatch.body.courier.codAmount).toBe(1080); // 1000 + 80 delivery, all due on delivery
 
-    const adv = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'T' }));
+    const adv = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'T' }));
     expect(adv.body.order).toMatchObject({ total: 1080, advanceAmount: 80, dueAmountOnDelivery: 1000 });
     const advDispatch = await request(a).post(`/v1/admin/orders/${adv.body.order.id}/dispatch`).set(auth(tok)).send({ provider: 'steadfast' });
     expect(advDispatch.body.courier.codAmount).toBe(1000); // the OLD bug would have charged 1080 (the full total) again on top of the prepaid delivery fee
 
-    const full = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH', bkashTrxId: 'T2' }));
+    const full = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH', bkashTrxId: 'T2' }));
     const fullDispatch = await request(a).post(`/v1/admin/orders/${full.body.order.id}/dispatch`).set(auth(tok)).send({ provider: 'pathao' });
     expect(fullDispatch.body.courier.codAmount).toBe(0); // fully prepaid, nothing to collect
   });

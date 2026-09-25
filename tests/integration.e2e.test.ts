@@ -8,7 +8,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { CouponModel } from '../src/modules/coupons/coupon.model';
 import { ProductModel } from '../src/modules/products/product.model';
-import { adminCtx, app, auth, mkCategory, patchSettings, registerCustomer } from './helpers';
+import { adminCtx, app, auth, orderAuth, mkCategory, patchSettings, registerCustomer } from './helpers';
 
 let seq = 40_000_000;
 const nextPhone = () => `013${String(seq++).padStart(8, '0')}`;
@@ -88,7 +88,7 @@ describe('integration: advance-delivery payment verification, fake-suspicion, an
     await patchSettings(a, adminTok, { enableCoupons: true });
     await request(a).post('/v1/admin/coupons').set(auth(adminTok)).send({ code: 'EID15', discountPercent: 15 }).expect(201);
 
-    const order = await request(a).post('/v1/orders').send({
+    const order = await request(a).post('/v1/orders').set(await orderAuth(a)).send({
       items: [{ productId: product.id, quantity: 1 }],
       customer: { fullName: 'Guest Buyer', phone: nextPhone(), address: '4 Lake Circus', city: 'Inside Dhaka' },
       paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'TRX-E2E-2', couponCode: 'EID15',

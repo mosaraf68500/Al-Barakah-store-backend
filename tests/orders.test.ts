@@ -7,7 +7,7 @@ import { CouponModel } from '../src/modules/coupons/coupon.model';
 import { expirePendingOrders } from '../src/modules/orders/order.service';
 import { OrderModel } from '../src/modules/orders/order.model';
 import { ProductModel } from '../src/modules/products/product.model';
-import { adminCtx, app, auth, mkProduct, patchSettings, registerCustomer } from './helpers';
+import { adminCtx, app, auth, orderAuth, mkProduct, patchSettings, registerCustomer } from './helpers';
 
 let seq = 10_000_000;
 const nextPhone = () => `017${String(seq++).padStart(8, '0')}`;
@@ -17,12 +17,23 @@ const guestOrder = (over: Record<string, unknown> = {}) => ({
 });
 const stockOf = async (id: string) => (await ProductModel.findById(id).lean())!.stockCount;
 
-describe('orders - creation (guest + logged-in, server-computed pricing)', () => {
-  it('guest FULL_COD: server prices from the product (client price/total/id are silently ignored), stock is deducted, tracking id is AB-######', async () => {
+describe('orders - creation (customer session required, server-computed pricing)', () => {
+  it('rejects an unauthenticated order with 401 and creates nothing', async () => {
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok, { price: 500, stockCount: 10 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({
+    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }] }));
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('AUTH_REQUIRED');
+    expect(await OrderModel.countDocuments()).toBe(0);
+    expect(await stockOf(p.id)).toBe(10);
+  });
+
+  it('logged-in FULL_COD: server prices from the product (client price/total/id are silently ignored), stock is deducted, tracking id is AB-######', async () => {
+    const { a, tok } = await adminCtx();
+    await relaxCod(a, tok);
+    const p = await mkProduct(a, tok, { price: 500, stockCount: 10 });
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({
       items: [{ productId: p.id, quantity: 2, price: 1, unitPrice: 999999 }], // client price - must be ignored
       id: 'AB-000001', total: 1, // client id/total - must be ignored
     }));
@@ -35,7 +46,9 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     expect(o.advancePaymentType).toBe('NONE');
     expect(o.deliveryPaymentStatus).toBe('COD_PENDING');
     expect(await stockOf(p.id)).toBe(8);
-    expect((await AuditLogModel.findOne({ action: 'order.create' }))!.actorEmail).toBe('guest');
+    const stored = await OrderModel.findById(o.id).lean();
+    expect(stored!.userId).toEqual(expect.any(String));
+    expect((await AuditLogModel.findOne({ action: 'order.create' }))).toMatchObject({ actorRole: 'customer' });
   });
 
   it('logged-in customer: userId is attached to the order and it shows up unmasked with FULL_PAID for FULL_BKASH (unaffected by decision #3)', async () => {
@@ -54,7 +67,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
   it('ADVANCE_DELIVERY with a TrxID -> ADVANCE_PENDING, NOT ADVANCE_PAID (decision #3: admin must verify it, see Module 5c)', async () => {
     const { a, tok } = await adminCtx();
     const p = await mkProduct(a, tok, { price: 400, stockCount: 5 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'ADV-1' }));
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY', bkashTrxId: 'ADV-1' }));
     expect(res.status).toBe(201);
     expect(res.body.order).toMatchObject({ advancePaymentType: 'DELIVERY_ONLY', advanceAmount: 80, dueAmountOnDelivery: 400, deliveryPaymentStatus: 'ADVANCE_PENDING' });
   });
@@ -63,7 +76,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     const { a, tok } = await adminCtx();
     await patchSettings(a, tok, { deliveryConfig: { enableFreeDelivery: true, freeDeliveryThreshold: 100 } });
     const p = await mkProduct(a, tok, { price: 400, stockCount: 5 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY' })); // no bkashTrxId at all
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'ADVANCE_DELIVERY' })); // no bkashTrxId at all
     expect(res.status).toBe(201);
     expect(res.body.order).toMatchObject({ shipping: 0, advanceAmount: 0, dueAmountOnDelivery: 400, deliveryPaymentStatus: 'COD_PENDING' });
   });
@@ -71,7 +84,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
   it('a required TrxID that is missing -> 400 TRX_ID_REQUIRED and NOTHING is created (no order, stock untouched)', async () => {
     const { a, tok } = await adminCtx();
     const p = await mkProduct(a, tok, { price: 400, stockCount: 5 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH' }));
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH' }));
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('TRX_ID_REQUIRED');
     expect(await OrderModel.countDocuments()).toBe(0);
@@ -81,7 +94,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
   it('FULL_COD is forbidden by the default delivery policy (requireAdvanceDeliveryCharge) -> 400, nothing created', async () => {
     const { a, tok } = await adminCtx();
     const p = await mkProduct(a, tok, { price: 400, stockCount: 5 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }] }));
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }] }));
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('ADVANCE_DELIVERY_REQUIRED');
     expect(await OrderModel.countDocuments()).toBe(0);
@@ -93,7 +106,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     await patchSettings(a, tok, { enableCoupons: true });
     await request(a).post('/v1/admin/coupons').set(auth(tok)).send({ code: 'SAVE10', discountPercent: 10, minSpend: 0 }).expect(201);
     const p = await mkProduct(a, tok, { price: 1000, stockCount: 5 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH', bkashTrxId: 'T1', couponCode: ' save10 ' }));
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH', bkashTrxId: 'T1', couponCode: ' save10 ' }));
     expect(res.status).toBe(201);
     expect(res.body.order).toMatchObject({ subtotal: 1000, discount: 100, total: 980, couponCode: 'SAVE10' });
     expect((await CouponModel.findOne({ code: 'SAVE10' }))!.timesUsed).toBe(1);
@@ -104,7 +117,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     await patchSettings(a, tok, { enableCoupons: true });
     await request(a).post('/v1/admin/coupons').set(auth(tok)).send({ code: 'BIG', discountPercent: 10, minSpend: 50_000 }).expect(201);
     const p = await mkProduct(a, tok, { price: 500, stockCount: 5 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH', bkashTrxId: 'T1', couponCode: 'BIG' }));
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], paymentChoice: 'FULL_BKASH', bkashTrxId: 'T1', couponCode: 'BIG' }));
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/^MIN_SPEND:/);
     expect(await OrderModel.countDocuments()).toBe(0);
@@ -117,7 +130,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     await relaxCod(a, tok);
     const plenty = await mkProduct(a, tok, { price: 100, stockCount: 100 });
     const scarce = await mkProduct(a, tok, { price: 100, stockCount: 1 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: plenty.id, quantity: 2 }, { productId: scarce.id, quantity: 5 }] }));
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: plenty.id, quantity: 2 }, { productId: scarce.id, quantity: 5 }] }));
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('INSUFFICIENT_STOCK');
     expect(await OrderModel.countDocuments()).toBe(0);
@@ -131,7 +144,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     const p = await mkProduct(a, tok, { price: 100, stockCount: 5 });
     await request(a).delete(`/v1/admin/products/${p.id}`).set(auth(tok)).expect(200);
     for (const id of [p.id, 'prod-ghost']) {
-      const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: id, quantity: 1 }] }));
+      const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: id, quantity: 1 }] }));
       expect(res.status).toBe(409);
       expect(res.body.error).toBe('PRODUCT_UNAVAILABLE');
     }
@@ -142,10 +155,10 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok);
-    expect((await request(a).post('/v1/orders').send(guestOrder({ items: [] }))).body.error).toBe('VALIDATION_ERROR');
-    expect((await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'X', phone: '123', address: 'a', city: '' } }))).body.error).toBe('INVALID_BD_PHONE');
-    expect((await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'X', phone: nextPhone(), address: '', city: '' } }))).body.error).toBe('VALIDATION_ERROR');
-    expect((await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 0 }] }))).body.error).toBe('VALIDATION_ERROR');
+    expect((await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [] }))).body.error).toBe('VALIDATION_ERROR');
+    expect((await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'X', phone: '123', address: 'a', city: '' } }))).body.error).toBe('INVALID_BD_PHONE');
+    expect((await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'X', phone: nextPhone(), address: '', city: '' } }))).body.error).toBe('VALIDATION_ERROR');
+    expect((await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 0 }] }))).body.error).toBe('VALIDATION_ERROR');
   });
 
   it('an order-id collision is retried with a fresh id - no double stock deduction, no double coupon redemption', async () => {
@@ -158,7 +171,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     const spy = vi.spyOn(crypto, 'randomInt');
     spy.mockReturnValueOnce(654321 as never).mockReturnValueOnce(654322 as never);
     try {
-      const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], couponCode: 'ONCE' }));
+      const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], couponCode: 'ONCE' }));
       expect(res.status).toBe(201);
       expect(res.body.order.id).toBe('AB-654322');
     } finally {
@@ -176,7 +189,7 @@ describe('orders - creation (guest + logged-in, server-computed pricing)', () =>
     const phone = nextPhone();
     let last = 0;
     for (let i = 0; i < 11; i++) {
-      const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'F', phone, address: 'a', city: '' } }));
+      const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'F', phone, address: 'a', city: '' } }));
       last = res.status;
       if (i < 10) expect(res.status).toBe(201);
     }
@@ -188,7 +201,7 @@ describe('orders - public tracking (masked PII, BACKEND_PLAN B8)', () => {
   async function place(a: ReturnType<typeof app>, tok: string) {
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok, { price: 300, stockCount: 5 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'Halima Akter', phone: nextPhone(), email: 'halima@example.com', address: '45 Lake Road, Gulshan', city: 'Inside Dhaka' }, notes: 'ring the bell', bkashTrxId: 'SECRET-TRX' }));
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'Halima Akter', phone: nextPhone(), email: 'halima@example.com', address: '45 Lake Road, Gulshan', city: 'Inside Dhaka' }, notes: 'ring the bell', bkashTrxId: 'SECRET-TRX' }));
     return res.body.order as { id: string };
   }
 
@@ -229,7 +242,18 @@ describe('orders - GET /orders/my', () => {
     const mine = cust.body.accessToken as string;
     const placeAs = (auth_: Record<string, string>, custPhone = phone) => request(a).post('/v1/orders').set(auth_).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'Me', phone: custPhone, address: 'a', city: '' } }));
 
-    const guestFirst = await placeAs({}); // guest order placed with the SAME phone before "registering" - should still show up
+    // Guest checkout is closed. A historical guest order (no userId, matching phone) is still listed.
+    const guestFirst = await OrderModel.create({
+      _id: 'AB-111111',
+      userId: null,
+      customer: { fullName: 'Me', phone, address: 'a', city: '' },
+      phoneKey: phone.replace(/\D/g, '').slice(-10),
+      items: [{ productId: p.id, name: 'Item', image: '', price: 100, quantity: 1, totalPrice: 100 }],
+      subtotal: 100, discount: 0, shipping: 0, total: 100, currency: 'BDT',
+      status: 'pending', advancePaymentType: 'NONE', advanceAmount: 0, dueAmountOnDelivery: 100,
+      deliveryPaymentStatus: 'COD_PENDING', isFakeSuspected: false, stockDeducted: false,
+      deliveryZone: 'inside', zoneUncertain: false, deletedAt: null,
+    });
     await new Promise((r) => setTimeout(r, 5));
     const asMe1 = await placeAs(auth(mine));
     await new Promise((r) => setTimeout(r, 5));
@@ -240,7 +264,7 @@ describe('orders - GET /orders/my', () => {
     const res = await request(a).get('/v1/orders/my').set(auth(mine));
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(3);
-    expect(res.body.items.map((o: { id: string }) => o.id)).toEqual([asMe2.body.order.id, asMe1.body.order.id, guestFirst.body.order.id]);
+    expect(res.body.items.map((o: { id: string }) => o.id)).toEqual([asMe2.body.order.id, asMe1.body.order.id, guestFirst._id]);
 
     const p1 = await request(a).get('/v1/orders/my?limit=2&page=1').set(auth(mine));
     expect(p1.body).toMatchObject({ page: 1, limit: 2, total: 3, totalPages: 2 });
@@ -255,8 +279,8 @@ describe('cron: expire abandoned pending orders (env PENDING_ORDER_TIMEOUT_HOURS
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok, { price: 100, stockCount: 10 });
-    const old = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 3 }] }));
-    const recent = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 2 }] }));
+    const old = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 3 }] }));
+    const recent = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 2 }] }));
     expect(await stockOf(p.id)).toBe(5);
     await OrderModel.collection.updateOne({ _id: old.body.order.id }, { $set: { createdAt: new Date(Date.now() - 25 * 3_600_000) } });
 
@@ -280,7 +304,7 @@ describe('cron: expire abandoned pending orders (env PENDING_ORDER_TIMEOUT_HOURS
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok, { price: 100, stockCount: 10 });
-    const res = await request(a).post('/v1/orders').send(guestOrder({ items: [{ productId: p.id, quantity: 1 }] }));
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send(guestOrder({ items: [{ productId: p.id, quantity: 1 }] }));
     await OrderModel.collection.updateOne({ _id: res.body.order.id }, { $set: { createdAt: new Date(Date.now() - 999 * 3_600_000), status: 'processing' } });
     expect(await expirePendingOrders()).toEqual({ expired: 0 });
     expect((await OrderModel.findById(res.body.order.id).lean())!.status).toBe('processing');

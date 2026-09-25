@@ -28,9 +28,8 @@ export const authenticate =
   };
 
 /**
- * For endpoints that work for both guests and logged-in customers (e.g. `POST /orders`): attaches `req.authUser` when a valid
- * customer Bearer token is present, but never rejects the request - a missing, expired or malformed token is treated as "guest",
- * not an error, so checkout is never blocked by a stale token.
+ * Attaches `req.authUser` when a valid customer Bearer token is present, and treats a missing or invalid token as anonymous.
+ * Order placement does not use this. `POST /orders` requires `authenticate('customer')`.
  */
 export const authenticateOptional: RequestHandler = async (req, _res, next) => {
   const h = req.headers.authorization;

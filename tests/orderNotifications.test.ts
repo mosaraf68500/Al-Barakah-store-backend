@@ -6,7 +6,7 @@ import { notifyOrderPlaced } from '../src/modules/notifications/orderEvents.serv
 import { buildPurchasePayload, sendFacebookPurchaseEvent } from '../src/modules/notifications/facebookCapi';
 import { formatOrderForTelegram, sendTelegramOrderAlert } from '../src/modules/notifications/telegram';
 import { OrderModel } from '../src/modules/orders/order.model';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, adminCtx, app, auth, makeUser, mkProduct, patchSettings } from './helpers';
+import { ADMIN_EMAIL, ADMIN_PASSWORD, adminCtx, app, auth, orderAuth, makeUser, mkProduct, patchSettings } from './helpers';
 
 let seq = 95_000_000;
 const nextPhone = () => `015${String(seq++).padStart(8, '0')}`;
@@ -32,7 +32,7 @@ afterEach(() => {
 async function placedOrder(a: ReturnType<typeof app>, tok: string, over: Record<string, unknown> = {}) {
   await relaxCod(a, tok);
   const p = await mkProduct(a, tok, { price: 500, stockCount: 5 });
-  const res = await request(a).post('/v1/orders').send({
+  const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send({
     items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'Halima Akter', phone: nextPhone(), address: '9 Road, Dhanmondi', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD', ...over,
   });
   return OrderModel.findById(res.body.order.id) as unknown as Promise<InstanceType<typeof OrderModel>>;
@@ -189,7 +189,7 @@ describe('order e-mails (owner + customer) are gated by ENABLE_LIVE_INTEGRATIONS
     expect(await notifyOrderPlaced(order)).toMatchObject({ ownerEmail: 'simulated', customerEmail: 'simulated' });
 
     const before = memoryOutbox.length;
-    const res = await request(a).post('/v1/orders').send({ items: [{ productId: (await mkProduct(a, tok)).id, quantity: 1 }], customer: { fullName: 'B', phone: nextPhone(), email: 'buyer2@example.com', address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: (await mkProduct(a, tok)).id, quantity: 1 }], customer: { fullName: 'B', phone: nextPhone(), email: 'buyer2@example.com', address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
     expect(res.status).toBe(201);
     await new Promise((r) => setTimeout(r, 20));
     expect(memoryOutbox.length).toBe(before); // nothing added - simulated, not sent
@@ -201,14 +201,14 @@ describe('order e-mails (owner + customer) are gated by ENABLE_LIVE_INTEGRATIONS
     useEnv({ ENABLE_LIVE_INTEGRATIONS: 'true' });
     const p = await mkProduct(a, tok, { price: 200, stockCount: 5 });
     const before = memoryOutbox.length;
-    const withEmail = await request(a).post('/v1/orders').send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'A', phone: nextPhone(), email: 'buyer@example.com', address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
+    const withEmail = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'A', phone: nextPhone(), email: 'buyer@example.com', address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
     expect(withEmail.status).toBe(201);
     await new Promise((r) => setTimeout(r, 20)); // notifyOrderPlaced is fire-and-forget (not awaited by the route)
     expect(memoryOutbox.length).toBe(before + 2); // owner + customer
     expect(memoryOutbox.some((m) => [m.to].flat().includes('buyer@example.com'))).toBe(true);
 
     const before2 = memoryOutbox.length;
-    const noEmail = await request(a).post('/v1/orders').send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'B', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
+    const noEmail = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'B', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
     expect(noEmail.status).toBe(201);
     await new Promise((r) => setTimeout(r, 20));
     expect(memoryOutbox.length).toBe(before2 + 1); // owner only
@@ -245,7 +245,7 @@ describe('notifyOrderPlaced - aggregation and non-blocking failure handling', ()
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok, { price: 100, stockCount: 5 });
     useEnv({ ENABLE_LIVE_INTEGRATIONS: 'true', ORDER_NOTIFY_EMAILS: undefined });
-    const res = await request(a).post('/v1/orders').send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'D', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'D', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
     expect(res.status).toBe(201);
     await new Promise((r) => setTimeout(r, 20));
     expect((await OrderModel.findById(res.body.order.id))).not.toBeNull(); // the order really was persisted, not rolled back

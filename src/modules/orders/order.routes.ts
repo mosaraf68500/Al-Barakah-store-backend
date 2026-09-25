@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getEnv } from '../../config/env';
-import { authenticate, authenticateOptional, requireRole } from '../../middleware/authenticate';
+import { authenticate, requireRole } from '../../middleware/authenticate';
 import { LIMITS, makeLimiter } from '../../middleware/rateLimiter';
 import { validateBody } from '../../middleware/validate';
 import { ApiError } from '../../utils/ApiError';
@@ -11,17 +11,17 @@ import { logger } from '../../utils/logger';
 import * as svc from './order.service';
 import { adminOrderListQuery, adminOrderPatchSchema, createOrderSchema, dispatchSchema, myOrdersQuery } from './order.validation';
 
-/** Mounted at /v1/orders. `POST /` works for guests and logged-in customers alike (`authenticateOptional`); `GET /my` is customer-only. */
+/** Mounted at /v1/orders. `POST /` requires a customer session. `GET /my` is customer-only. Tracking stays public. */
 export function orderRoutes(rateLimits: boolean) {
   const r = Router();
 
   r.post(
     '/',
     makeLimiter(LIMITS.orderCreateIp, rateLimits),
-    authenticateOptional,
+    authenticate('customer'),
     validateBody(createOrderSchema),
     asyncHandler(async (req, res) => {
-      const order = await svc.createOrder(req.body, req.authUser ?? null, req);
+      const order = await svc.createOrder(req.body, req.authUser!, req);
       ApiResponse.created(res, { order });
     }),
   );

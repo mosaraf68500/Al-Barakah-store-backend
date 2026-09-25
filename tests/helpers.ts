@@ -77,6 +77,26 @@ export async function adminCtx() {
   return { a, tok: (await adminSignIn(a)).accessToken };
 }
 export const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+const orderTokens = new WeakMap<Express, Promise<Record<string, string>>>();
+let orderPhone = 90_000_000;
+/**
+ * Bearer header for a customer registered on this app instance.
+ * Cached so one test can place many orders without registering twice.
+ * Uses its own phone prefix so it does not collide with a test that already called registerCustomer.
+ */
+export function orderAuth(a: Express): Promise<Record<string, string>> {
+  let pending = orderTokens.get(a);
+  if (!pending) {
+    const phone = `019${String(orderPhone++).padStart(8, '0')}`;
+    pending = registerCustomer(a, { phone }).then((res) => {
+      if (typeof res.body.accessToken !== 'string') throw new Error(`registerCustomer ${res.status} ${JSON.stringify(res.body)}`);
+      return auth(res.body.accessToken);
+    });
+    orderTokens.set(a, pending);
+  }
+  return pending;
+}
 export async function mkCategory(a: Express, tok: string, name: string, extra: Record<string, unknown> = {}) {
   const r = await request(a).post('/v1/admin/categories').set(auth(tok)).send({ name, ...extra });
   return (r.body as Array<{ id: string; name: string }>).find((c) => c.name === name)!;
