@@ -3,7 +3,7 @@
  * Paths are listed here; request bodies are not hand-written JSON Schema.
  */
 import { z } from 'zod';
-import { registerSchema, loginSchema, changePinSchema, updateProfileSchema, addressInput } from '../modules/auth/auth.validation';
+import { registerSchema, loginSchema, googleLoginSchema, changePinSchema, updateProfileSchema, addressInput } from '../modules/auth/auth.validation';
 import { adminLoginSchema, verifyOtpSchema, grantAccessSchema, setPasswordSchema } from '../modules/admin-auth/adminAuth.validation';
 import { createOrderSchema } from '../modules/orders/order.validation';
 import { createReviewSchema } from '../modules/reviews/review.validation';
@@ -67,6 +67,7 @@ const OPERATIONS: Operation[] = [
   { method: 'delete', path: '/wishlist/{productId}', summary: 'Remove wishlist item', auth: 'customer' },
   { method: 'post', path: '/auth/register', summary: 'Customer register', auth: 'none', body: registerSchema },
   { method: 'post', path: '/auth/login', summary: 'Customer login', auth: 'none', body: loginSchema },
+  { method: 'post', path: '/auth/google', summary: 'Customer Google sign-in', auth: 'none', body: googleLoginSchema },
   { method: 'post', path: '/auth/change-pin', summary: 'Change PIN', auth: 'customer', body: changePinSchema },
   { method: 'get', path: '/auth/me', summary: 'Customer profile', auth: 'customer' },
   { method: 'patch', path: '/auth/me', summary: 'Update profile', auth: 'customer', body: updateProfileSchema },

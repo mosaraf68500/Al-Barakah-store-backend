@@ -18,6 +18,7 @@ const ROUTES: { method: 'get' | 'post' | 'put' | 'patch' | 'delete'; path: strin
   { method: 'get', path: '/v1/orders/track/AB-000000', gate: 'open' },
   { method: 'post', path: '/v1/auth/register', gate: 'open' },
   { method: 'post', path: '/v1/auth/login', gate: 'open' },
+  { method: 'post', path: '/v1/auth/google', gate: 'open' },
   { method: 'post', path: '/v1/admin-auth/login', gate: 'open' },
   { method: 'get', path: '/v1/auth/me', gate: 'customer' },
   { method: 'patch', path: '/v1/auth/me', gate: 'customer' },

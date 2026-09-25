@@ -3,6 +3,8 @@ import type { Role } from '../../config/constants';
 
 export interface Address { id: string; label?: string; name: string; phone: string; address: string; district: string; isDefault: boolean }
 
+export type AuthProviderName = 'phone' | 'google';
+
 export interface UserDoc {
   _id: Types.ObjectId;
   role: Role;
@@ -10,6 +12,10 @@ export interface UserDoc {
   email?: string;
   phone?: string;
   phoneKey?: string;
+  /** Google `sub`. Absent on phone-only accounts. */
+  googleId?: string;
+  /** How this account can sign in. Absent on rows created before Google sign-in; phone login does not require it. */
+  authProviders?: AuthProviderName[];
   /** bcrypt hash: customers = the 6-digit PIN, admins = the password. Never serialised. */
   passwordHash?: string | null;
   isActive: boolean;
@@ -38,6 +44,8 @@ const schema = new Schema<UserDoc>(
     email: { type: String, lowercase: true, trim: true },
     phone: String,
     phoneKey: String,
+    googleId: { type: String, trim: true },
+    authProviders: { type: [{ type: String, enum: ['phone', 'google'] }], default: undefined },
     passwordHash: { type: String, default: null, select: false },
     isActive: { type: Boolean, default: true },
     tokenVersion: { type: Number, default: 0 },
@@ -54,6 +62,7 @@ const schema = new Schema<UserDoc>(
 );
 schema.index({ email: 1 }, { unique: true, partialFilterExpression: { email: { $type: 'string' } } });
 schema.index({ phone: 1 }, { unique: true, partialFilterExpression: { phone: { $type: 'string' } } });
+schema.index({ googleId: 1 }, { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } });
 schema.index({ phoneKey: 1 });
 
 export const UserModel: Model<UserDoc> = (models.User as Model<UserDoc>) ?? model<UserDoc>('User', schema);

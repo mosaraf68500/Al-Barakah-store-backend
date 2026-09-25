@@ -12,6 +12,8 @@ import { sha256 } from '../../utils/crypto';
 import { toCustomerProfile } from '../users/user.serializer';
 import { issueSession, signAccessToken } from '../users/token.service';
 import type { AddressInput, AddressPatch, LoginInput, RegisterInput, UpdateProfileInput } from './auth.validation';
+import { verifyGoogleIdToken } from './googleIdentity';
+import type { AuthProviderName } from '../users/user.model';
 
 function assertPin(pin: string) {
   if (!pin) throw ApiError.badRequest('PIN_REQUIRED');
@@ -80,6 +82,74 @@ export async function loginCustomer(input: LoginInput, req: Request, res: Respon
   await user!.save();
   const { token, expiresIn, refreshToken } = await issueSession(user!, 'customer', req, res);
   return { accessToken: token, expiresIn, refreshToken, user: toCustomerProfile(user!) };
+}
+
+const ADMIN_EMAIL_MESSAGE = 'This email is used by an administrator account';
+
+function providersWithGoogle(user: UserDocument): AuthProviderName[] {
+  const names = new Set<AuthProviderName>(user.authProviders ?? []);
+  if (user.phone || user.passwordHash) names.add('phone');
+  names.add('google');
+  return [...names];
+}
+
+async function startCustomerSession(user: UserDocument, req: Request, res: Response) {
+  user.lastLoginAt = new Date();
+  await user.save();
+  const { token, expiresIn, refreshToken } = await issueSession(user, 'customer', req, res);
+  return { accessToken: token, expiresIn, refreshToken, user: toCustomerProfile(user) };
+}
+
+/**
+ * Google ID-token sign-in. An existing `googleId` wins. Otherwise a customer with the same email is linked.
+ * An admin email is refused and left unchanged. A new customer is created with no phone and no PIN.
+ */
+export async function loginWithGoogle(idToken: string, req: Request, res: Response) {
+  const identity = await verifyGoogleIdToken(idToken);
+  if (!identity.emailVerified) throw ApiError.unauthorized('GOOGLE_EMAIL_UNVERIFIED', 'Google sign-in could not be verified.');
+
+  const byGoogle = await UserModel.findOne({ googleId: identity.sub }).select('+passwordHash');
+  if (byGoogle) {
+    if (byGoogle.role !== 'customer') throw ApiError.conflict('GOOGLE_EMAIL_IS_ADMIN', ADMIN_EMAIL_MESSAGE);
+    if (!byGoogle.isActive) throw ApiError.forbidden('ACCOUNT_DISABLED', 'This account is disabled.');
+    return startCustomerSession(byGoogle, req, res);
+  }
+
+  const byEmail = await UserModel.findOne({ email: identity.email }).select('+passwordHash');
+  if (byEmail) {
+    if (byEmail.role !== 'customer') throw ApiError.conflict('GOOGLE_EMAIL_IS_ADMIN', ADMIN_EMAIL_MESSAGE);
+    if (!byEmail.isActive) throw ApiError.forbidden('ACCOUNT_DISABLED', 'This account is disabled.');
+    if (byEmail.googleId && byEmail.googleId !== identity.sub) {
+      throw ApiError.conflict('GOOGLE_ALREADY_LINKED', 'This account is already linked to a different Google sign-in.');
+    }
+    byEmail.googleId = identity.sub;
+    byEmail.authProviders = providersWithGoogle(byEmail);
+    await recordAudit({ actor: { id: byEmail._id, email: byEmail.email, role: 'customer' }, action: 'customer.google_linked', entity: 'User', entityId: String(byEmail._id), req });
+    return startCustomerSession(byEmail, req, res);
+  }
+
+  try {
+    const created = await UserModel.create({
+      role: 'customer',
+      name: identity.name,
+      email: identity.email,
+      googleId: identity.sub,
+      authProviders: ['google'],
+      ...(identity.picture ? { avatarUrl: identity.picture } : {}),
+      isActive: true,
+    });
+    await recordAudit({ actor: { id: created._id, email: created.email, role: 'customer' }, action: 'customer.google_register', entity: 'User', entityId: String(created._id), req });
+    return startCustomerSession(created, req, res);
+  } catch (e) {
+    if ((e as { code?: number }).code !== 11000) throw e;
+    const again = await UserModel.findOne({ $or: [{ googleId: identity.sub }, { email: identity.email }] }).select('+passwordHash');
+    if (!again || again.role !== 'customer' || !again.isActive) throw ApiError.conflict('GOOGLE_EMAIL_IS_ADMIN', ADMIN_EMAIL_MESSAGE);
+    if (!again.googleId) {
+      again.googleId = identity.sub;
+      again.authProviders = providersWithGoogle(again);
+    }
+    return startCustomerSession(again, req, res);
+  }
 }
 
 

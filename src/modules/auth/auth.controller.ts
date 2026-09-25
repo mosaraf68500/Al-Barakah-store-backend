@@ -2,10 +2,11 @@ import type { Request, Response } from 'express';
 import { ApiResponse } from '../../utils/ApiResponse';
 import { toCustomerProfile } from '../users/user.serializer';
 import { assertCsrf, clearRefreshCookie, readRefreshToken, revokeByRawToken, rotateRefreshToken } from '../users/token.service';
-import { addAddress, changeCustomerPin, listAddresses, loginCustomer, registerCustomer, removeAddress, updateAddress, updateCustomerProfile } from './auth.service';
+import { addAddress, changeCustomerPin, listAddresses, loginCustomer, loginWithGoogle, registerCustomer, removeAddress, updateAddress, updateCustomerProfile } from './auth.service';
 
 export const register = async (req: Request, res: Response) => ApiResponse.created(res, await registerCustomer(req.body, req, res));
 export const login = async (req: Request, res: Response) => ApiResponse.ok(res, await loginCustomer(req.body, req, res));
+export const google = async (req: Request, res: Response) => ApiResponse.ok(res, await loginWithGoogle(req.body.idToken, req, res));
 
 export async function refresh(req: Request, res: Response) {
   assertCsrf(req);

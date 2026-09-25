@@ -10,6 +10,7 @@ export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254).optional(),
 });
 export const loginSchema = z.object({ phone: z.string().max(40).default(''), pin: z.string().max(128).default('') });
+export const googleLoginSchema = z.object({ idToken: z.string().trim().min(1).max(8192) });
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export const changePinSchema = z.object({ currentPin: z.string().max(128).default(''), newPin: z.string().max(128).default('') });

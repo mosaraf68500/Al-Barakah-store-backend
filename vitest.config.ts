@@ -27,6 +27,7 @@ export default defineConfig({
       SMTP_FROM: 'Al Barakah <no-reply@albarakah.test>',
       ORDER_NOTIFY_EMAILS: 'owner@albarakah.test',
       ENABLE_LIVE_INTEGRATIONS: 'false',
+      GOOGLE_CLIENT_ID: 'test-google-client.apps.googleusercontent.com',
     },
   },
 });
