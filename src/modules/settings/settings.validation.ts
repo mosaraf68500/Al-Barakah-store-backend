@@ -58,6 +58,8 @@ const heroBanners = z.object({
   slides: z.array(z.object({ id: str(100), badge: str(100).optional(), title: str(300), subtitle: str(500).optional(), ctaText: str(100).optional(), image: imageRef, enabled: z.boolean(), order: z.number().optional() }).merge(target)).max(20),
   promoCard: z.object({ id: str(100), badge: str(100).optional(), title: str(300), subtitle: str(500).optional(), ctaText: str(100).optional(), image: imageRef, enabled: z.boolean() }).merge(target),
 });
+// Partial so the homepage toggle can PATCH `{ enabled }` alone. deepMerge then changes only that flag;
+// `items` is omitted, so the stored list is left in place (arrays replace only when sent).
 const topSelling = z.object({
   enabled: z.boolean(), title: str(200), subtitle: str(500).optional(), productIds: z.array(str(100)).max(50).optional(),
   items: z.array(z.object({
@@ -65,7 +67,7 @@ const topSelling = z.object({
     badge: str(100).optional(), badgeText: str(100).optional(), badgeBgColor: str(40).optional(), badgeTextColor: str(40).optional(),
     overridePrice: z.number().min(0).optional(), overrideOriginalPrice: z.number().min(0).optional(), overrideWeight: str(100).optional(), enabled: z.boolean().optional(), order: z.number().optional(),
   })).max(50),
-});
+}).partial();
 
 /** PATCH body for /v1/admin/settings (every section optional; unknown keys are stripped). Secret fields live inside their section. */
 /** `version` (from the last GET) is REQUIRED: the write only succeeds if nobody changed the settings in between. */

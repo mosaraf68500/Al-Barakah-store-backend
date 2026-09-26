@@ -6,10 +6,10 @@
  * (called from `order.service.ts` WITHOUT being awaited), so a notification failure must never fail or roll back an order that
  * has already succeeded.
  *
- * Both order e-mails are gated by `ENABLE_LIVE_INTEGRATIONS`, same as Telegram/Facebook CAPI (logged only below the flag) -
- * this is ORDER-notification traffic, not core auth functionality, so it follows the "simulated unless live" rule every other
- * integration in this backend follows. This does NOT affect admin OTP/invite e-mails (`notifications.service.ts`'s other
- * senders), which stay always-on via the mailer's own `MAIL_TRANSPORT` switch, since login must always actually work.
+ * Both order e-mails are gated by `ENABLE_ORDER_EMAILS` (default false). Telegram, Facebook CAPI, and courier booking stay on
+ * `ENABLE_LIVE_INTEGRATIONS` and are not affected by this flag. Below the flag the e-mails are logged only. This does NOT
+ * affect admin OTP/invite e-mails (`notifications.service.ts`'s other senders), which stay always-on via the mailer's own
+ * `MAIL_TRANSPORT` switch, since login must always actually work.
  */
 import { logger } from '../../utils/logger';
 import { getEnv } from '../../config/env';
@@ -46,7 +46,7 @@ type EmailOutcome = 'sent' | 'simulated' | 'skipped' | 'failed';
 export interface OrderNotifyResult { ownerEmail: EmailOutcome; customerEmail: EmailOutcome; telegram: TelegramResult; facebookCapi: CapiResult }
 
 async function sendOwnerEmail(order: OrderDoc, emailInput: OrderEmailInput): Promise<EmailOutcome> {
-  if (!getEnv().ENABLE_LIVE_INTEGRATIONS) {
+  if (!getEnv().ENABLE_ORDER_EMAILS) {
     logger.info({ orderId: order._id, simulated: true }, '[SIMULATED] owner order-notification e-mail');
     return 'simulated';
   }
@@ -61,7 +61,7 @@ async function sendOwnerEmail(order: OrderDoc, emailInput: OrderEmailInput): Pro
 
 async function sendCustomerEmail(order: OrderDoc, emailInput: OrderEmailInput): Promise<EmailOutcome> {
   if (!order.customer.email) return 'skipped';
-  if (!getEnv().ENABLE_LIVE_INTEGRATIONS) {
+  if (!getEnv().ENABLE_ORDER_EMAILS) {
     logger.info({ orderId: order._id, simulated: true }, '[SIMULATED] customer order-confirmation e-mail');
     return 'simulated';
   }

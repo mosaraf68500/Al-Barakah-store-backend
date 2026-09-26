@@ -182,7 +182,9 @@ describe('Facebook CAPI Purchase event - simulated by default, PII hashed (fixes
   });
 });
 
-describe('order e-mails (owner + customer) are gated by ENABLE_LIVE_INTEGRATIONS, same as Telegram/CAPI (Module 7 follow-up)', () => {
+describe('order e-mails (owner + customer) are gated by ENABLE_ORDER_EMAILS, independent of ENABLE_LIVE_INTEGRATIONS', () => {
+  const SUPER = 'super@albarakah.test';
+
   it('default (false): SIMULATED - neither e-mail is actually sent, placing an order leaves the outbox untouched', async () => {
     const { a, tok } = await adminCtx();
     const order = await placedOrder(a, tok, { customer: { fullName: 'A', phone: nextPhone(), email: 'buyer@example.com', address: 'a', city: 'Inside Dhaka' } });
@@ -195,23 +197,52 @@ describe('order e-mails (owner + customer) are gated by ENABLE_LIVE_INTEGRATIONS
     expect(memoryOutbox.length).toBe(before); // nothing added - simulated, not sent
   });
 
-  it('ENABLE_LIVE_INTEGRATIONS=true: both are actually sent via the mailer; the customer one only when an e-mail was given', async () => {
+  it('ENABLE_ORDER_EMAILS=true with live integrations off: both e-mails send, Telegram and Facebook stay simulated, owner recipient is the super_admin account', async () => {
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
-    useEnv({ ENABLE_LIVE_INTEGRATIONS: 'true' });
+    await withTelegram(a, tok);
+    await withCapi(a, tok);
+    await makeUser('super_admin', SUPER);
+    useEnv({ ENABLE_LIVE_INTEGRATIONS: 'false', ENABLE_ORDER_EMAILS: 'true', ORDER_NOTIFY_EMAILS: 'not-used@albarakah.test', SUPER_ADMIN_EMAIL: 'seed-only@albarakah.test' });
     const p = await mkProduct(a, tok, { price: 200, stockCount: 5 });
     const before = memoryOutbox.length;
-    const withEmail = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'A', phone: nextPhone(), email: 'buyer@example.com', address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
-    expect(withEmail.status).toBe(201);
-    await new Promise((r) => setTimeout(r, 20)); // notifyOrderPlaced is fire-and-forget (not awaited by the route)
-    expect(memoryOutbox.length).toBe(before + 2); // owner + customer
+    let fetched = false;
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => { fetched = true; return orig(...args); }) as typeof fetch;
+    try {
+      const withEmail = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'A', phone: nextPhone(), email: 'buyer@example.com', address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
+      expect(withEmail.status).toBe(201);
+      await new Promise((r) => setTimeout(r, 20));
+      const order = await OrderModel.findById(withEmail.body.order.id);
+      expect(await sendTelegramOrderAlert(order!)).toEqual({ sent: false, simulated: true });
+      expect(await sendFacebookPurchaseEvent(order!)).toEqual({ sent: false, simulated: true });
+    } finally {
+      globalThis.fetch = orig;
+    }
+    expect(fetched).toBe(false);
+    expect(memoryOutbox.length).toBe(before + 2);
+    const owner = memoryOutbox.find((m) => [m.to].flat().includes(SUPER));
+    expect(owner?.to).toEqual([SUPER]);
     expect(memoryOutbox.some((m) => [m.to].flat().includes('buyer@example.com'))).toBe(true);
+    expect(memoryOutbox.some((m) => [m.to].flat().includes('not-used@albarakah.test') || [m.to].flat().includes('seed-only@albarakah.test'))).toBe(false);
 
     const before2 = memoryOutbox.length;
     const noEmail = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'B', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
     expect(noEmail.status).toBe(201);
     await new Promise((r) => setTimeout(r, 20));
     expect(memoryOutbox.length).toBe(before2 + 1); // owner only
+    expect(memoryOutbox.at(-1)?.to).toEqual([SUPER]);
+  });
+
+  it('with no super_admin account yet, the owner e-mail falls back to SUPER_ADMIN_EMAIL', async () => {
+    const { a, tok } = await adminCtx();
+    await relaxCod(a, tok);
+    useEnv({ ENABLE_ORDER_EMAILS: 'true', SUPER_ADMIN_EMAIL: 'seed-only@albarakah.test' });
+    const p = await mkProduct(a, tok, { price: 200, stockCount: 5 });
+    const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'A', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
+    expect(res.status).toBe(201);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(memoryOutbox.at(-1)?.to).toEqual(['seed-only@albarakah.test']);
   });
 
   it('admin OTP e-mail is NOT gated by ENABLE_LIVE_INTEGRATIONS - it stays always-on regardless of the flag (core auth, not an order notification)', async () => {
@@ -235,7 +266,7 @@ describe('notifyOrderPlaced - aggregation and non-blocking failure handling', ()
   it('in LIVE mode, a genuinely broken owner e-mail is reported as "failed", not thrown', async () => {
     const { a, tok } = await adminCtx();
     const order = await placedOrder(a, tok, { customer: { fullName: 'C', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' } });
-    useEnv({ ENABLE_LIVE_INTEGRATIONS: 'true', ORDER_NOTIFY_EMAILS: undefined }); // breaks the owner e-mail (throws inside sendOrderNotificationEmail)
+    useEnv({ ENABLE_ORDER_EMAILS: 'true', SUPER_ADMIN_EMAIL: undefined }); // no super_admin account and no seed address
     const result = await notifyOrderPlaced(order);
     expect(result).toEqual({ ownerEmail: 'failed', customerEmail: 'skipped', telegram: { sent: false, simulated: false, reason: 'NOT_CONFIGURED' }, facebookCapi: { sent: false, simulated: false, reason: 'NOT_CONFIGURED' } });
   });
@@ -244,7 +275,7 @@ describe('notifyOrderPlaced - aggregation and non-blocking failure handling', ()
     const { a, tok } = await adminCtx();
     await relaxCod(a, tok);
     const p = await mkProduct(a, tok, { price: 100, stockCount: 5 });
-    useEnv({ ENABLE_LIVE_INTEGRATIONS: 'true', ORDER_NOTIFY_EMAILS: undefined });
+    useEnv({ ENABLE_ORDER_EMAILS: 'true', SUPER_ADMIN_EMAIL: undefined });
     const res = await request(a).post('/v1/orders').set(await orderAuth(a)).send({ items: [{ productId: p.id, quantity: 1 }], customer: { fullName: 'D', phone: nextPhone(), address: 'a', city: 'Inside Dhaka' }, paymentChoice: 'FULL_COD' });
     expect(res.status).toBe(201);
     await new Promise((r) => setTimeout(r, 20));

@@ -47,7 +47,8 @@ const schema = z
     SMTP_USER: optStr,
     SMTP_PASS: optStr,
     SMTP_FROM: optStr,
-    ORDER_NOTIFY_EMAILS: z.string().default(''),
+    /** Owner and customer order e-mails. Independent of ENABLE_LIVE_INTEGRATIONS. Off unless exactly "true". */
+    ENABLE_ORDER_EMAILS: bool,
 
     CLOUDINARY_CLOUD_NAME: optStr,
     CLOUDINARY_API_KEY: optStr,
@@ -92,7 +93,7 @@ const schema = z
     }
   });
 
-export type Env = z.infer<typeof schema> & { corsOrigins: string[]; orderNotifyEmails: string[]; settingsKeys: Buffer[] };
+export type Env = z.infer<typeof schema> & { corsOrigins: string[]; settingsKeys: Buffer[] };
 
 export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = schema.safeParse(source);
@@ -102,7 +103,7 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   const list = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
   const keyList = [parsed.data.SETTINGS_ENCRYPTION_KEY, ...list(parsed.data.SETTINGS_ENCRYPTION_KEY_PREVIOUS ?? '')].map((k) => decodeKey(k.trim())!);
-  return { ...parsed.data, corsOrigins: list(parsed.data.CORS_ORIGINS), orderNotifyEmails: list(parsed.data.ORDER_NOTIFY_EMAILS), settingsKeys: keyList };
+  return { ...parsed.data, corsOrigins: list(parsed.data.CORS_ORIGINS), settingsKeys: keyList };
 }
 
 let cached: Env | undefined;

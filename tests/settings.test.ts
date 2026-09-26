@@ -126,6 +126,15 @@ describe('settings - encryption at rest and update semantics', () => {
     expect(pub.deliveryConfig.outsideDhakaCharge).toBe(200);
   });
 
+  it('patching topSelling.enabled alone leaves the saved title and items in place', async () => {
+    const { a, sa } = await setup();
+    const items = [{ id: 'keep-me', name: 'Mustard', price: 10, image: 'https://res.cloudinary.com/x/y.jpg', enabled: true }];
+    await request(a).patch('/v1/admin/settings').set(bearer(sa)).send(await withV(a, sa, { topSelling: { enabled: false, title: 'Keep title', items } })).expect(200);
+    const toggled = await request(a).patch('/v1/admin/settings').set(bearer(sa)).send(await withV(a, sa, { topSelling: { enabled: true } }));
+    expect(toggled.status).toBe(200);
+    expect(toggled.body.topSelling).toMatchObject({ enabled: true, title: 'Keep title', items });
+  });
+
   it('validation: wrong types, non-https courier URLs, base64 images anywhere -> 400', async () => {
     const { a, sa } = await setup();
     const patch = async (b: Record<string, unknown>) => request(a).patch('/v1/admin/settings').set(bearer(sa)).send(await withV(a, sa, b));

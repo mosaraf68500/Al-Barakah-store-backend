@@ -126,11 +126,8 @@ describe('mailer fix #4 - one configured sender identity (SECURITY_RISKS #22)', 
     expect(src).not.toMatch(/gmai\b/);
   });
 
-  it('order-notification recipients come from configuration only', async () => {
-    const { sendOrderNotificationEmail } = await import('../src/modules/notifications/notifications.service');
-    await sendOrderNotificationEmail({ id: 'AB-1', customerName: 'N', customerPhone: '017', deliveryAddress: 'A', totalAmount: 1, items: [] });
-    expect(memoryOutbox.at(-1)!.to).toEqual(['owner@albarakah.test']);
-  });
+  // Recipient sourcing for sendOrderNotificationEmail (DB super_admin accounts, SUPER_ADMIN_EMAIL only as a
+  // pre-seed fallback, empty when neither exists) is covered in tests/orderNotifications.test.ts.
 });
 
 describe('mailer fix #5 - failures surface as failures (no fake "delivered")', () => {
