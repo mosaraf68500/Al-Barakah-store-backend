@@ -70,8 +70,8 @@ const schema = z
     SUPER_ADMIN_EMAIL: optStr,
     SUPER_ADMIN_PASSWORD: optStr,
 
-    /** Public OAuth client id. Audience check for Google ID tokens. The client secret is not used. */
-    GOOGLE_CLIENT_ID: z.string().min(1).default('947073184687-9303rtcuomi8it4t3nv0l6f75ndm3ofq.apps.googleusercontent.com'),
+    /** Firebase project id. Audience/issuer check for Firebase Auth ID tokens from Google sign-in. */
+    FIREBASE_PROJECT_ID: z.string().min(1).default('albarakahpremium-6b848'),
   })
   .superRefine((e, ctx) => {
     const keys = [e.SETTINGS_ENCRYPTION_KEY, ...(e.SETTINGS_ENCRYPTION_KEY_PREVIOUS ? e.SETTINGS_ENCRYPTION_KEY_PREVIOUS.split(',') : [])];

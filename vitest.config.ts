@@ -27,7 +27,7 @@ export default defineConfig({
       SMTP_FROM: 'Al Barakah <no-reply@albarakah.test>',
       ENABLE_LIVE_INTEGRATIONS: 'false',
       ENABLE_ORDER_EMAILS: 'false',
-      GOOGLE_CLIENT_ID: 'test-google-client.apps.googleusercontent.com',
+      FIREBASE_PROJECT_ID: 'test-firebase-project',
     },
   },
 });

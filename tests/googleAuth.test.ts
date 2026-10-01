@@ -33,7 +33,7 @@ describe('POST /v1/auth/google', () => {
     const a = app();
     const res = await request(a).post('/v1/auth/google').send({ idToken: 'verified-token' });
     expect(res.status).toBe(200);
-    expect(seen()).toBe('test-google-client.apps.googleusercontent.com');
+    expect(seen()).toBe('test-firebase-project');
     expect(res.body.accessToken).toMatch(/^eyJ/);
     expect(res.body.refreshToken).toMatch(/^eyJ/);
     expect(res.body.user).toMatchObject({ name: 'Buyer Khan', email: 'buyer@gmail.com', role: 'customer' });

@@ -18,8 +18,8 @@ const base = { ...process.env };
 describe('env validation (fail fast)', () => {
   it('rejects missing/short/duplicated secrets and unsafe production settings', () => {
     expect(() => parseEnv({ ...base, JWT_ACCESS_SECRET: 'short' })).toThrow(/JWT_ACCESS_SECRET/);
-    const { GOOGLE_CLIENT_ID: _google, ...noGoogle } = base;
-    expect(parseEnv(noGoogle).GOOGLE_CLIENT_ID).toBe('947073184687-9303rtcuomi8it4t3nv0l6f75ndm3ofq.apps.googleusercontent.com');
+    const { FIREBASE_PROJECT_ID: _firebase, ...noFirebase } = base;
+    expect(parseEnv(noFirebase).FIREBASE_PROJECT_ID).toBe('albarakahpremium-6b848');
     expect(() => parseEnv({ ...base, JWT_REFRESH_SECRET: base.JWT_ACCESS_SECRET })).toThrow(/must all be different/);
     const { MONGODB_URI: _m, ...noMongo } = base;
     expect(() => parseEnv(noMongo)).toThrow(/MONGODB_URI/);

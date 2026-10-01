@@ -101,7 +101,7 @@ async function startCustomerSession(user: UserDocument, req: Request, res: Respo
 }
 
 /**
- * Google ID-token sign-in. An existing `googleId` wins. Otherwise a customer with the same email is linked.
+ * Firebase Google sign-in. An existing `googleId` wins. Otherwise a customer with the same email is linked.
  * An admin email is refused and left unchanged. A new customer is created with no phone and no PIN.
  */
 export async function loginWithGoogle(idToken: string, req: Request, res: Response) {
