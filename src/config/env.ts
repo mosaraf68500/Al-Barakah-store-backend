@@ -95,6 +95,32 @@ const schema = z
 
 export type Env = z.infer<typeof schema> & { corsOrigins: string[]; settingsKeys: Buffer[] };
 
+/** Strip trailing slashes and pair www ↔ apex so both shop hosts work after a custom-domain cutover. */
+export function expandCorsOrigins(origins: string[]): string[] {
+  const out = new Set<string>();
+  for (const raw of origins) {
+    const origin = raw.trim().replace(/\/+$/, '');
+    if (!origin) continue;
+    out.add(origin);
+    try {
+      const u = new URL(origin);
+      if (u.hostname === 'localhost' || u.hostname.endsWith('.localhost') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)) continue;
+      if (u.hostname.startsWith('www.')) {
+        const apex = new URL(origin);
+        apex.hostname = u.hostname.slice(4);
+        out.add(apex.origin);
+      } else if (u.hostname.split('.').length === 2) {
+        const www = new URL(origin);
+        www.hostname = `www.${u.hostname}`;
+        out.add(www.origin);
+      }
+    } catch {
+      /* keep the raw trimmed value */
+    }
+  }
+  return [...out];
+}
+
 export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = schema.safeParse(source);
   if (!parsed.success) {
@@ -103,7 +129,7 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   const list = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
   const keyList = [parsed.data.SETTINGS_ENCRYPTION_KEY, ...list(parsed.data.SETTINGS_ENCRYPTION_KEY_PREVIOUS ?? '')].map((k) => decodeKey(k.trim())!);
-  return { ...parsed.data, corsOrigins: list(parsed.data.CORS_ORIGINS), settingsKeys: keyList };
+  return { ...parsed.data, corsOrigins: expandCorsOrigins(list(parsed.data.CORS_ORIGINS)), settingsKeys: keyList };
 }
 
 let cached: Env | undefined;

@@ -30,8 +30,18 @@ describe('env validation (fail fast)', () => {
     const e = parseEnv(base);
     expect(e.ENABLE_LIVE_INTEGRATIONS).toBe(false);
     expect(e.ENABLE_ORDER_EMAILS).toBe(false);
-    expect(e.corsOrigins).toEqual(['https://shop.test', 'https://admin.test']);
+    expect(e.corsOrigins).toEqual(expect.arrayContaining(['https://shop.test', 'https://admin.test', 'https://www.shop.test', 'https://www.admin.test']));
+    expect(e.corsOrigins).toHaveLength(4);
     expect(e.ADMIN_SESSION_MAX_HOURS).toBe(12);
+  });
+  it('pairs www and apex hosts in CORS_ORIGINS', () => {
+    const e = parseEnv({ ...base, CORS_ORIGINS: 'https://www.albarakahpremium.com,http://localhost:3000' });
+    expect(e.corsOrigins).toEqual(expect.arrayContaining([
+      'https://www.albarakahpremium.com',
+      'https://albarakahpremium.com',
+      'http://localhost:3000',
+    ]));
+    expect(e.corsOrigins).not.toContain('http://www.localhost:3000');
   });
 });
 
