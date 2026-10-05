@@ -55,8 +55,9 @@ const schema = z
     CLOUDINARY_API_SECRET: optStr,
 
     /**
-     * Optional Redis URL for public read cache-aside (e.g. redis://… or rediss://… for TLS).
-     * When unset, the API behaves exactly as before (always hits Mongo).
+     * Optional Redis URL for public read cache-aside (`redis://` or `rediss://` for TLS — Redis Cloud / Upstash).
+     * When unset, every public read hits Mongo. When set, products/categories/settings/reviews use cache-aside;
+     * Redis failures never fail a request (soft cooldown + Mongo fallback).
      */
     REDIS_URL: optStr,
 
@@ -95,6 +96,12 @@ const schema = z
     if (e.MAIL_TRANSPORT === 'smtp' && e.NODE_ENV !== 'test') {
       for (const k of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'] as const) {
         if (!e[k]) ctx.addIssue({ code: 'custom', path: [k], message: `${k} is required when MAIL_TRANSPORT=smtp` });
+      }
+    }
+    if (e.REDIS_URL) {
+      const u = e.REDIS_URL.trim();
+      if (!/^rediss?:\/\//i.test(u)) {
+        ctx.addIssue({ code: 'custom', path: ['REDIS_URL'], message: 'REDIS_URL must start with redis:// or rediss:// (TLS)' });
       }
     }
   });

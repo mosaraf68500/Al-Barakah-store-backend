@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pingDb } from '../../config/db';
 import { getEnv } from '../../config/env';
+import { pingRedis } from '../../cache/redis';
 import { authenticate, requireRole } from '../../middleware/authenticate';
 import { ApiResponse } from '../../utils/ApiResponse';
 import { asyncHandler } from '../../utils/asyncHandler';
@@ -13,8 +14,17 @@ export function adminHealthRoutes() {
     '/health',
     authenticate('admin'), requireRole('admin', 'super_admin'),
     asyncHandler(async (_req, res) => {
-      const latencyMs = await pingDb();
-      ApiResponse.ok(res, { ok: true, latencyMs, mode: 'mongo', liveIntegrations: getEnv().ENABLE_LIVE_INTEGRATIONS });
+      const [latencyMs, redis] = await Promise.all([pingDb(), pingRedis()]);
+      ApiResponse.ok(res, {
+        ok: true,
+        latencyMs,
+        mode: 'mongo',
+        liveIntegrations: getEnv().ENABLE_LIVE_INTEGRATIONS,
+        redis: {
+          configured: Boolean(getEnv().REDIS_URL?.trim()),
+          ...redis,
+        },
+      });
     }),
   );
   return r;
