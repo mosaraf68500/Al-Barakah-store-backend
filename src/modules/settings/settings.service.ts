@@ -1,6 +1,9 @@
 import type { Request } from 'express';
 import { ApiError } from '../../utils/ApiError';
 import { decryptField, encryptField, isCurrentKey, looksMasked, maskSecret } from '../../utils/secretBox';
+import { cacheGetOrSet } from '../../cache/cacheAside';
+import { CacheKeys, CacheTtl } from '../../cache/keys';
+import { invalidateSettingsCaches } from '../../cache/invalidate';
 import { recordAudit } from '../audit/audit.service';
 import { registerMediaUsageChecker } from '../media/media.service';
 import type { UserDocument } from '../users/user.model';
@@ -78,7 +81,7 @@ export function toAdmin(config: Obj, secrets: Record<string, string>, version = 
 }
 
 export async function getPublicSettings() {
-  return toPublic((await load(false)).config);
+  return cacheGetOrSet(CacheKeys.settingsPublic(), CacheTtl.settings, async () => toPublic((await load(false)).config));
 }
 /** Server-internal use only (never sent over HTTP) - the raw non-secret config, unmasked, for consumers like `notifications`
  * that need fields `toPublic`/`toAdmin` don't carry (e.g. `notificationConfig.telegram.enabled`, `courierConfig`). */
@@ -180,6 +183,7 @@ export async function updateSettings(actor: UserDocument, input: UpdateSettingsI
     details: { sections, credentialFieldsUpdated: changedSecrets, credentialFieldsCleared: clearedSecrets, version: version + 1 }, // field NAMES only, never values (key names avoid words the audit redactor treats as sensitive)
     req,
   });
+  await invalidateSettingsCaches();
   return toAdmin(nextConfig, nextSecrets, saved.version);
 }
 

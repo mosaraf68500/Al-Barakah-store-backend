@@ -3,21 +3,28 @@ import type { ClientSession, FilterQuery } from 'mongoose';
 import { ratingRemovalPipeline, ratingUpdatePipeline } from '../../domain/rating';
 import { generateSlug } from '../../domain/slug';
 import { ApiError } from '../../utils/ApiError';
+import { cacheGetOrSet, hashQuery } from '../../cache/cacheAside';
+import { CacheIndex, CacheKeys, CacheTtl } from '../../cache/keys';
+import { invalidateProductCaches } from '../../cache/invalidate';
 import { recordAudit } from '../audit/audit.service';
 import { CategoryModel } from '../categories/category.model';
 import { resolveImages, type ImageRef } from '../media/media.lookup';
 import { registerMediaUsageChecker } from '../media/media.service';
 import type { UserDocument } from '../users/user.model';
 import { ProductModel, type ProductDoc } from './product.model';
-import { toAdminProduct, toPublicProduct } from './product.serializer';
+import { toAdminProduct, toPublicProduct, toPublicProductListItem } from './product.serializer';
 import type { ProductInput } from './product.validation';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const actorOf = (u: UserDocument) => ({ id: u._id, email: u.email, role: u.role });
 const HARD_CAP = 1000; // full-array responses are capped (BACKEND_PLAN Q18)
 
+/** Fields needed to build a public catalog card (excludes heavy description / landingPage). */
+const PUBLIC_LIST_SELECT =
+  '_id name slug categoryId subcategory brand origin weight sku isHot flagNew price originalPrice stockCount inStock badge image images colors sizes features tags rating reviewCount createdAt';
+
 async function categoryNames(): Promise<Map<string, string>> {
-  return new Map((await CategoryModel.find().lean()).map((c) => [c._id, c.name]));
+  return new Map((await CategoryModel.find().select('_id name').lean()).map((c) => [c._id, c.name]));
 }
 
 /* ------------------------------------------------------------------ public reads */
@@ -75,14 +82,16 @@ async function list(q: ListQuery, admin: boolean) {
   const rank = new Map<string, number>();
   const filter = await buildFilter(q, admin ? q.deleted ?? 'exclude' : 'exclude', rank);
   const names = await categoryNames();
-  const ser = (p: ProductDoc) => (admin ? toAdminProduct(p, names.get(p.categoryId) ?? '') : toPublicProduct(p, names.get(p.categoryId) ?? ''));
+  const ser = (p: ProductDoc) =>
+    admin ? toAdminProduct(p, names.get(p.categoryId) ?? '') : toPublicProductListItem(p, names.get(p.categoryId) ?? '');
   const paged = q.page !== undefined && q.limit !== undefined;
   if (filter === null) return paged ? { items: [], total: 0, page: q.page!, limit: q.limit!, totalPages: 0 } : [];
 
   // A search with no explicit sort is ordered by relevance (text hits first, then prefix-only hits, then category-name matches); an explicit sort wins.
   const byRelevance = Boolean(q.search) && !q.sort;
   const base = ProductModel.find(filter).sort(SORTS[q.sort ?? 'newest']);
-  const query = admin ? base.select('+costPrice') : base; // costPrice is select:false - only admin queries opt in
+  // Public list: project only catalog fields. Admin still needs costPrice (+select).
+  const query = admin ? base.select('+costPrice') : base.select(PUBLIC_LIST_SELECT);
   if (byRelevance) {
     const rows = (await query.limit(HARD_CAP).lean()).sort((x, y) => (rank.get(x._id) ?? Infinity) - (rank.get(y._id) ?? Infinity));
     if (!paged) return rows.map(ser);
@@ -95,22 +104,34 @@ async function list(q: ListQuery, admin: boolean) {
   }
   return (await query.limit(HARD_CAP).lean()).map(ser);
 }
-export const listPublicProducts = (q: ListQuery) => list(q, false);
+
+export async function listPublicProducts(q: ListQuery) {
+  const key = CacheKeys.productsList(hashQuery(q));
+  return cacheGetOrSet(key, CacheTtl.products, () => list(q, false), CacheIndex.productListKeys);
+}
 export const listAdminProducts = (q: ListQuery) => list(q, true);
 
 /** Same resolution order as the storefront: id -> slug -> (case-insensitive) id/slug -> name-contains (>= 3 chars). Archived products never resolve. */
 export async function getPublicProduct(rawKey: string) {
   const key = decodeURIComponent(rawKey).trim();
   if (!key) throw ApiError.notFound('PRODUCT_NOT_FOUND');
-  const rx = new RegExp(`^${escapeRegex(key)}$`, 'i');
-  const live = { deletedAt: null };
-  const doc =
-    (await ProductModel.findOne({ ...live, _id: key }).lean()) ??
-    (await ProductModel.findOne({ ...live, slug: key }).lean()) ??
-    (await ProductModel.findOne({ ...live, $or: [{ _id: rx }, { slug: rx }] }).lean()) ??
-    (key.length >= 3 ? await ProductModel.findOne({ ...live, name: new RegExp(escapeRegex(key), 'i') }).sort({ createdAt: 1, _id: 1 }).lean() : null);
-  if (!doc) throw ApiError.notFound('PRODUCT_NOT_FOUND');
-  return toPublicProduct(doc, (await categoryNames()).get(doc.categoryId) ?? '');
+  const cacheKey = CacheKeys.productByKey(key);
+  return cacheGetOrSet(
+    cacheKey,
+    CacheTtl.product,
+    async () => {
+      const rx = new RegExp(`^${escapeRegex(key)}$`, 'i');
+      const live = { deletedAt: null };
+      const doc =
+        (await ProductModel.findOne({ ...live, _id: key }).lean()) ??
+        (await ProductModel.findOne({ ...live, slug: key }).lean()) ??
+        (await ProductModel.findOne({ ...live, $or: [{ _id: rx }, { slug: rx }] }).lean()) ??
+        (key.length >= 3 ? await ProductModel.findOne({ ...live, name: new RegExp(escapeRegex(key), 'i') }).sort({ createdAt: 1, _id: 1 }).lean() : null);
+      if (!doc) throw ApiError.notFound('PRODUCT_NOT_FOUND');
+      return toPublicProduct(doc, (await categoryNames()).get(doc.categoryId) ?? '');
+    },
+    CacheIndex.productDetailKeys,
+  );
 }
 
 export async function getAdminProduct(id: string) {
@@ -172,6 +193,7 @@ export async function createProduct(actor: UserDocument, input: ProductInput, re
     rating: input.rating ?? 5, reviewCount: input.reviewCount ?? 0, landingPage: input.landingPage,
   });
   await recordAudit({ actor: actorOf(actor), action: 'product.create', entity: 'Product', entityId: id, details: { name: input.name }, req });
+  await invalidateProductCaches();
   return getAdminProduct(doc._id);
 }
 
@@ -203,6 +225,7 @@ export async function updateProduct(actor: UserDocument, id: string, input: Prod
   if (input.landingPage !== undefined) doc.landingPage = input.landingPage;
   await doc.save();
   await recordAudit({ actor: actorOf(actor), action: 'product.update', entity: 'Product', entityId: id, details: { name: input.name }, req });
+  await invalidateProductCaches();
   return getAdminProduct(id);
 }
 
@@ -211,11 +234,13 @@ export async function softDeleteProduct(actor: UserDocument, id: string, req: Re
   const r = await ProductModel.findOneAndUpdate({ _id: id, deletedAt: null }, { $set: { deletedAt: new Date() } }, { new: true });
   if (!r) throw ApiError.notFound('PRODUCT_NOT_FOUND');
   await recordAudit({ actor: actorOf(actor), action: 'product.delete', entity: 'Product', entityId: id, details: { name: r.name, soft: true }, req });
+  await invalidateProductCaches();
 }
 export async function restoreProduct(actor: UserDocument, id: string, req: Request) {
   const r = await ProductModel.findOneAndUpdate({ _id: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } }, { new: true });
   if (!r) throw ApiError.notFound('PRODUCT_NOT_FOUND');
   await recordAudit({ actor: actorOf(actor), action: 'product.restore', entity: 'Product', entityId: id, details: { name: r.name }, req });
+  await invalidateProductCaches();
   return getAdminProduct(id);
 }
 

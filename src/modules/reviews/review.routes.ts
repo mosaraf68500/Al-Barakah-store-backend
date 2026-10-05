@@ -11,7 +11,7 @@ import { adminReviewListQuery, createReviewSchema, publicReviewQuery } from './r
 export function publicReviewRoutes(rateLimits = true) {
   const r = Router();
   r.get('/', asyncHandler(async (req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=10, stale-while-revalidate=60');
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     ApiResponse.ok(res, await svc.listPublicReviews(publicReviewQuery.parse(req.query)));
   }));
   r.post(

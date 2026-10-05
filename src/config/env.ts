@@ -54,6 +54,12 @@ const schema = z
     CLOUDINARY_API_KEY: optStr,
     CLOUDINARY_API_SECRET: optStr,
 
+    /**
+     * Optional Redis URL for public read cache-aside (e.g. redis://… or rediss://… for TLS).
+     * When unset, the API behaves exactly as before (always hits Mongo).
+     */
+    REDIS_URL: optStr,
+
     STEADFAST_API_KEY: optStr,
     STEADFAST_SECRET_KEY: optStr,
     PATHAO_CLIENT_ID: optStr,

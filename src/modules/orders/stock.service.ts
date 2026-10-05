@@ -11,6 +11,7 @@ import type { ClientSession } from 'mongoose';
 import { ApiError } from '../../utils/ApiError';
 import { logger } from '../../utils/logger';
 import { withTransaction } from '../../utils/transaction';
+import { invalidateProductCaches } from '../../cache/invalidate';
 import { ProductModel } from '../products/product.model';
 import { OrderModel, type OrderStatus } from './order.model';
 
@@ -48,6 +49,8 @@ export async function reserveStock(lines: StockLine[], session: ClientSession, o
     if (!p || p.deletedAt) throw new ApiError(409, 'PRODUCT_UNAVAILABLE', 'This product is no longer available', { productId });
     throw new ApiError(409, 'INSUFFICIENT_STOCK', `Only ${p.stockCount} of "${p.name}" left in stock`, { productId, name: p.name, available: p.stockCount, requested: quantity });
   }
+  // Best-effort: clear catalog caches so storefront stock badges refresh. Safe if Redis is off.
+  void invalidateProductCaches();
 }
 
 /** stock += qty for every line (also for archived products - restoring one must not lose units). Unknown products are skipped and logged. */
@@ -60,6 +63,7 @@ export async function releaseStock(lines: StockLine[], session: ClientSession): 
     );
     if (r.matchedCount === 0) logger.warn({ productId, quantity }, 'stock release: product no longer exists');
   }
+  void invalidateProductCaches();
 }
 
 /** What a status change means for stock. The `stockDeducted` flag on the order makes the executor idempotent regardless. */

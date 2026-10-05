@@ -14,7 +14,7 @@ export function toPublicProduct(p: ProductDoc, categoryName: string) {
     ...(p.subcategory ? { subcategory: p.subcategory } : {}),
     ...(p.brand ? { brand: p.brand } : {}), ...(p.origin ? { origin: p.origin } : {}), ...(p.weight ? { weight: p.weight } : {}), ...(p.sku ? { sku: p.sku } : {}),
     ...(p.isHot !== undefined ? { isHot: p.isHot } : {}), ...(p.flagNew !== undefined ? { isNew: p.flagNew } : {}),
-    description: p.description,
+    description: p.description ?? '',
     price: p.price,
     ...(p.originalPrice !== undefined ? { originalPrice: p.originalPrice } : {}),
     stockCount: p.stockCount,
@@ -31,6 +31,16 @@ export function toPublicProduct(p: ProductDoc, categoryName: string) {
     ...(p.landingPage ? { landingPage: p.landingPage } : {}),
     createdAt: p.createdAt.toISOString(),
   };
+}
+
+/**
+ * Catalog/list payload: same public shape, but omits heavy detail fields (`description`, `landingPage`).
+ * Product detail pages still use `toPublicProduct` via `GET /v1/products/:key`.
+ */
+export function toPublicProductListItem(p: ProductDoc, categoryName: string) {
+  const full = toPublicProduct(p, categoryName);
+  const { landingPage: _lp, ...rest } = full;
+  return { ...rest, description: '' };
 }
 
 /** Admin output = public + the purchase price and the archive state. */

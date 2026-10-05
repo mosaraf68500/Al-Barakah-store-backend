@@ -172,8 +172,13 @@ export async function createOrder(input: CreateOrderInput, authUser: UserDocumen
         return created;
       });
       await recordAudit({ actor: actorOf(authUser), action: 'order.create', entity: 'Order', entityId: id, details: { total: doc.total, paymentChoice: input.paymentChoice, couponCode: doc.couponCode, zoneUncertain: doc.zoneUncertain }, req });
-      // Fire-and-forget (Module 10): the order already succeeded, so a notification failure must never surface here - NOT awaited.
-      notifyOrderPlaced(doc).catch((err) => logger.warn({ err, orderId: id }, 'notifyOrderPlaced rejected unexpectedly (ignored)'));
+      // Awaited so Vercel Functions do not freeze before SMTP finishes. notifyOrderPlaced never throws (channels are
+      // independently try/caught), so a notification failure cannot fail or roll back an order that already succeeded.
+      try {
+        await notifyOrderPlaced(doc);
+      } catch (err) {
+        logger.warn({ err, orderId: id }, 'notifyOrderPlaced rejected unexpectedly (ignored)');
+      }
       return toFullOrder(doc);
     } catch (e) {
       lastErr = e;

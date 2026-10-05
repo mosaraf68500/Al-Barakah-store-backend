@@ -4,6 +4,9 @@ import { ProductModel } from '../products/product.model';
 import { OrderModel } from '../orders/order.model';
 import { ApiError } from '../../utils/ApiError';
 import { withTransaction } from '../../utils/transaction';
+import { cacheGetOrSet, hashQuery } from '../../cache/cacheAside';
+import { CacheIndex, CacheKeys, CacheTtl } from '../../cache/keys';
+import { invalidateReviewCaches } from '../../cache/invalidate';
 import { recordAudit } from '../audit/audit.service';
 import { getPublicSettings } from '../settings/settings.service';
 import type { UserDocument } from '../users/user.model';
@@ -21,13 +24,21 @@ export interface ReviewListQuery { productId?: string; page?: number; limit?: nu
 
 /** `GET /reviews[?productId][&page&limit]` - approved, non-deleted only, newest first. A plain array unless both `page` and `limit` are given (same pattern as `/products`). */
 export async function listPublicReviews(q: ReviewListQuery) {
-  const filter = { approved: true, deletedAt: null, ...(q.productId ? { productId: q.productId } : {}) };
-  const base = ReviewModel.find(filter).sort({ createdAt: -1, _id: 1 });
-  if (q.page !== undefined && q.limit !== undefined) {
-    const [rows, total] = await Promise.all([base.skip((q.page - 1) * q.limit).limit(q.limit).lean(), ReviewModel.countDocuments(filter)]);
-    return { items: rows.map(toPublicReview), total, page: q.page, limit: q.limit, totalPages: Math.ceil(total / q.limit) };
-  }
-  return (await base.lean()).map(toPublicReview);
+  const key = CacheKeys.reviewsList(hashQuery(q));
+  return cacheGetOrSet(
+    key,
+    CacheTtl.reviews,
+    async () => {
+      const filter = { approved: true, deletedAt: null, ...(q.productId ? { productId: q.productId } : {}) };
+      const base = ReviewModel.find(filter).select('_id productId productName customerName rating comment city verifiedPurchase createdAt').sort({ createdAt: -1, _id: 1 });
+      if (q.page !== undefined && q.limit !== undefined) {
+        const [rows, total] = await Promise.all([base.skip((q.page - 1) * q.limit).limit(q.limit).lean(), ReviewModel.countDocuments(filter)]);
+        return { items: rows.map(toPublicReview), total, page: q.page, limit: q.limit, totalPages: Math.ceil(total / q.limit) };
+      }
+      return (await base.lean()).map(toPublicReview);
+    },
+    CacheIndex.reviewListKeys,
+  );
 }
 
 /* ------------------------------------------------------------------ create */
@@ -58,6 +69,7 @@ export async function createReview(actor: UserDocument, input: CreateReviewInput
       return created;
     });
     await recordAudit({ actor: actorOf(actor), action: 'review.create', entity: 'Review', entityId: id, details: { productId: product._id, rating: input.rating }, req });
+    await invalidateReviewCaches();
     return toPublicReview(doc);
   } catch (e) {
     if (isDup(e)) throw ApiError.conflict('ALREADY_REVIEWED', 'You have already reviewed this product');
@@ -82,6 +94,7 @@ export async function softDeleteReview(actor: UserDocument, id: string, req: Req
     return r;
   });
   await recordAudit({ actor: actorOf(actor), action: 'review.delete', entity: 'Review', entityId: id, details: { productId: review.productId }, req });
+  await invalidateReviewCaches();
   return { ok: true as const };
 }
 

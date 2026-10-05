@@ -1,6 +1,9 @@
 import type { Request } from 'express';
 import { generateSlug } from '../../domain/slug';
 import { ApiError } from '../../utils/ApiError';
+import { cacheGetOrSet } from '../../cache/cacheAside';
+import { CacheKeys, CacheTtl } from '../../cache/keys';
+import { invalidateCategoryCaches } from '../../cache/invalidate';
 import { recordAudit } from '../audit/audit.service';
 import { registerMediaUsageChecker } from '../media/media.service';
 import { resolveImages, serializeImage, type ImageRef } from '../media/media.lookup';
@@ -13,7 +16,9 @@ import type { CategoryInput } from './category.validation';
 export const toCategory = (c: CategoryDoc) => ({ id: c._id, name: c.name, slug: c.slug, image: serializeImage(c.image), enabled: c.enabled, ...(c.badge ? { badge: c.badge } : {}), order: c.order });
 
 export async function listCategories() {
-  return (await CategoryModel.find().sort({ order: 1, _id: 1 }).lean()).map(toCategory);
+  return cacheGetOrSet(CacheKeys.categories(), CacheTtl.categories, async () =>
+    (await CategoryModel.find().select('_id name slug image enabled badge order').sort({ order: 1, _id: 1 }).lean()).map(toCategory),
+  );
 }
 
 const actorOf = (u: UserDocument) => ({ id: u._id, email: u.email, role: u.role });
@@ -45,6 +50,7 @@ export async function createCategory(actor: UserDocument, input: CategoryInput, 
   const count = await CategoryModel.countDocuments();
   await CategoryModel.create({ _id: id, name: input.name, slug, image: await imageFor(input.image), enabled: input.enabled, badge: input.badge || undefined, description: input.description, order: count });
   await recordAudit({ actor: actorOf(actor), action: 'category.create', entity: 'Category', entityId: id, details: { name: input.name }, req });
+  await invalidateCategoryCaches();
   return listCategories();
 }
 
@@ -63,6 +69,7 @@ export async function updateCategory(actor: UserDocument, id: string, input: Par
   if (input.description !== undefined) current.description = input.description;
   await current.save();
   await recordAudit({ actor: actorOf(actor), action: 'category.update', entity: 'Category', entityId: id, details: { name }, req });
+  await invalidateCategoryCaches();
   return listCategories();
 }
 
@@ -81,6 +88,7 @@ export async function deleteCategory(actor: UserDocument, id: string, req: Reque
   await CategoryModel.deleteOne({ _id: id });
   await renumber();
   await recordAudit({ actor: actorOf(actor), action: 'category.delete', entity: 'Category', entityId: id, details: { name: current.name }, req });
+  await invalidateCategoryCaches();
   return listCategories();
 }
 
@@ -116,6 +124,7 @@ export async function replaceCategories(actor: UserDocument, items: CategoryInpu
     })),
   );
   await recordAudit({ actor: actorOf(actor), action: 'category.replace', entity: 'Category', details: { count: list.length, removed: removed.map((c) => c.name) }, req });
+  await invalidateCategoryCaches();
   return listCategories();
 }
 

@@ -10,7 +10,7 @@ import { updateSettingsSchema } from './settings.validation';
 export function publicSettingsRoutes() {
   const r = Router();
   r.get('/public', asyncHandler(async (_req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     ApiResponse.ok(res, await svc.getPublicSettings());
   }));
   return r;

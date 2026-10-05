@@ -3,8 +3,8 @@
  * had for a new order (owner e-mail, Telegram alert, Facebook CAPI Purchase event) plus one new addition (a customer
  * confirmation e-mail, only when an e-mail address exists). Every channel is independently try/caught so one failing channel
  * can never affect another, and the whole function never throws - by the time this runs the order is already committed
- * (called from `order.service.ts` WITHOUT being awaited), so a notification failure must never fail or roll back an order that
- * has already succeeded.
+ * (called from `order.service.ts` after commit; awaited so serverless hosts finish SMTP before freeze). A notification
+ * failure must never fail or roll back an order that has already succeeded.
  *
  * Both order e-mails are gated by `ENABLE_ORDER_EMAILS` (default false). Telegram, Facebook CAPI, and courier booking stay on
  * `ENABLE_LIVE_INTEGRATIONS` and are not affected by this flag. Below the flag the e-mails are logged only. This does NOT

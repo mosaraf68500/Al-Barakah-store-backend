@@ -10,11 +10,11 @@ import { adminListQuery, productInput, publicListQuery } from './product.validat
 export function publicProductRoutes() {
   const r = Router();
   r.get('/', asyncHandler(async (req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=10, stale-while-revalidate=60');
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     ApiResponse.ok(res, await svc.listPublicProducts(publicListQuery.parse(req.query)));
   }));
   r.get('/:key', asyncHandler(async (req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=10, stale-while-revalidate=60');
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     ApiResponse.ok(res, await svc.getPublicProduct(req.params.key));
   }));
   return r;

@@ -10,7 +10,7 @@ import { categoryInput, categoryList, categoryPatch } from './category.validatio
 export function publicCategoryRoutes() {
   const r = Router();
   r.get('/', asyncHandler(async (_req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     ApiResponse.ok(res, await svc.listCategories());
   }));
   return r;
