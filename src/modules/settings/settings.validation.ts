@@ -20,6 +20,10 @@ const deliveryConfig = z.object({
   deliveryNotice: str(1000),
   requireAdvanceDeliveryCharge: z.boolean(),
   advanceDeliveryNotice: str(1000),
+  /** Checkout payment-method visibility (default true when omitted). */
+  enableAdvanceDeliveryPayment: z.boolean(),
+  enableFullBkashPayment: z.boolean(),
+  enableFullCodPayment: z.boolean(),
 }).partial();
 
 const bkashConfig = z.object({
