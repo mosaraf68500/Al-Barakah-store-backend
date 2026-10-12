@@ -19,8 +19,6 @@ function assertPin(pin: string) {
   if (!pin) throw ApiError.badRequest('PIN_REQUIRED');
   if (pin.length < 6) throw ApiError.badRequest('PIN_TOO_SHORT', 'Password must be at least 6 characters');
   if (pin.length > 128) throw ApiError.badRequest('PIN_INVALID', 'Password is too long');
-  const strong = /[a-z]/.test(pin) && /[A-Z]/.test(pin) && /\d/.test(pin) && /[^A-Za-z0-9]/.test(pin);
-  if (!strong) throw ApiError.badRequest('PIN_INVALID', 'Password must include an uppercase letter, a lowercase letter, a number, and a special character');
 }
 
 export async function registerCustomer(input: RegisterInput, req: Request, res: Response) {
@@ -155,7 +153,7 @@ export async function loginWithGoogle(idToken: string, req: Request, res: Respon
 
 /**
  * Customer changes their own PIN (also how a temporary PIN issued by an admin gets replaced).
- * Same password rule as registration (at least 6 characters, with upper, lower, a number, and a special character). Wrong current PINs count against the SAME lockout as login (a stolen access token must not
+ * Same password rule as registration (at least 6 characters). Wrong current PINs count against the SAME lockout as login (a stolen access token must not
  * become a PIN-guessing oracle). Every OTHER session is invalidated; the caller's own session (refresh-token family) survives and
  * receives a fresh access token.
  */
