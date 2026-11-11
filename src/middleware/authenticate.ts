@@ -29,7 +29,7 @@ export const authenticate =
 
 /**
  * Attaches `req.authUser` when a valid customer Bearer token is present, and treats a missing or invalid token as anonymous.
- * Order placement does not use this. `POST /orders` requires `authenticate('customer')`.
+ * Used by guest-capable routes such as `POST /orders`.
  */
 export const authenticateOptional: RequestHandler = async (req, _res, next) => {
   const h = req.headers.authorization;

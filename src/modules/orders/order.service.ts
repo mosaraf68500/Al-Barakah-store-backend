@@ -100,7 +100,7 @@ export async function expirePendingOrders(now = new Date()): Promise<{ expired: 
  * WHOLE transaction, so nothing is half-applied and no compensation is needed. Client-sent prices/totals do not exist in this
  * function's input: every amount comes from the server's own product/settings data.
  */
-export async function createOrder(input: CreateOrderInput, authUser: UserDocument, req: Request) {
+export async function createOrder(input: CreateOrderInput, authUser: UserDocument | null, req: Request) {
   const phone = toPlus880(input.customer.phone);
   if (!phone) throw ApiError.badRequest('INVALID_BD_PHONE');
   const key = last10(phone); // last 10 digits, same rule as customer accounts (phoneKey just takes the last 10 chars, prefix-agnostic)
@@ -155,7 +155,7 @@ export async function createOrder(input: CreateOrderInput, authUser: UserDocumen
         const [created] = await OrderModel.create(
           [{
             _id: id,
-            userId: String(authUser._id),
+            userId: authUser ? String(authUser._id) : null,
             customer: { fullName: input.customer.fullName, email: input.customer.email || undefined, phone, address: input.customer.address, city: input.customer.city, postalCode: undefined },
             phoneKey: key,
             items: lines,
@@ -171,7 +171,14 @@ export async function createOrder(input: CreateOrderInput, authUser: UserDocumen
         );
         return created;
       });
-      await recordAudit({ actor: actorOf(authUser), action: 'order.create', entity: 'Order', entityId: id, details: { total: doc.total, paymentChoice: input.paymentChoice, couponCode: doc.couponCode, zoneUncertain: doc.zoneUncertain }, req });
+      await recordAudit({
+        actor: authUser ? actorOf(authUser) : { email: phone, role: 'guest' },
+        action: 'order.create',
+        entity: 'Order',
+        entityId: id,
+        details: { total: doc.total, paymentChoice: input.paymentChoice, couponCode: doc.couponCode, zoneUncertain: doc.zoneUncertain, guest: !authUser },
+        req,
+      });
       // Awaited so Vercel Functions do not freeze before SMTP finishes. notifyOrderPlaced never throws (channels are
       // independently try/caught), so a notification failure cannot fail or roll back an order that already succeeded.
       try {
